@@ -10,7 +10,7 @@ bun.lock
 bun.lockb
 coverage
 __openclaw_vitest__/
-__pycache__/
+__pycache__
 *.pyc
 .tsbuildinfo
 .pnpm-store
@@ -156,3 +156,8 @@ extensions/qa-lab/web/dist/
 # Generated bundled plugin runtime dependency manifests
 extensions/**/.openclaw-runtime-deps.json
 extensions/**/.openclaw-runtime-deps-stamp.json
+
+# Docker runtime data (should never be committed)
+.openclaw/
+openclaw-linuxbrew/
+.dockerignore
