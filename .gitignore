@@ -195,3 +195,5 @@ extensions/**/.openclaw-runtime-deps-stamp.json
 .openclaw/
 openclaw-linuxbrew/
 .dockerignore
+# Local plugin runtime dependencies
+plugin-runtime-deps/
