@@ -195,4 +195,11 @@ extensions/**/.openclaw-runtime-deps-stamp.json
 
 # Output dir for scripts/run-opengrep.sh (local opengrep scans)
 /.opengrep-out/
-\n# Docker runtime data (should never be committed)\n.openclaw/\nopenclaw-linuxbrew/\n.dockerignore
+
+# Docker runtime data (should never be committed)
+.openclaw/
+openclaw-linuxbrew/
+.dockerignore
+
+# Local plugin runtime dependencies
+plugin-runtime-deps/
