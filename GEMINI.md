@@ -47,6 +47,19 @@
    ```
 2. **監控進度**：使用 `gh run watch` 或網頁監控。
 
-## 3. 個人自定義配置清單 (Customizations)
+---
+
+## 4. 關鍵部署檢查點 (Infrastructure Monitoring)
+在每次進版（特別是 Rebase 之後），Gemini 應主動檢查以下內容，並提醒使用者同步更新 VPS (Zeabur) 配置：
+
+- **Runtime 依賴處理 (Self-containment Check)**：
+  - **觀察**：自 v2026.4.27 起，官方改用啟動時動態下載 Runtime (約 1GB)，導致 VPS 部署容易因網路/性能問題超時。
+  - **原則**：理想的 Docker 鏡像應為「自包含」，即所有運作依賴應在編譯時包入，而非啟動後安裝。
+  - **升級檢查**：比對 `Dockerfile` 與 `docker-compose.yml`，確認官方是否修正了此設計（如：是否將下載邏輯移至編譯階段）。
+- **環境變數與掛載點變動**：
+  - 檢查 `.yml` 中是否有新增的 `environment` 變數。
+  - 檢查是否有新增的 `volumes` 需求。若有，必須主動提醒使用者在 Zeabur Dashboard 手動同步新增 Volume 掛載點。
+
+## 5. 個人自定義配置清單 (Customizations)
 - **Docker Workflow**：修改 `.github/workflows/docker-release.yml`，將觸發條件限制為 `workflow_dispatch` 並修正標籤邏輯。
 - **Gitignore**：添加 Docker 執行期產生的數據檔案過濾。
