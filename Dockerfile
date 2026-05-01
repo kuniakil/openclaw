@@ -131,7 +131,7 @@ RUN printf 'packages:\n  - .\n  - ui\n' > /tmp/pnpm-workspace.runtime.yaml && \
     done && \
     cp /tmp/pnpm-workspace.runtime.yaml pnpm-workspace.yaml && \
     CI=true NPM_CONFIG_FROZEN_LOCKFILE=false pnpm prune --prod && \
-    node scripts/postinstall-bundled-plugins.mjs && \
+    OPENCLAW_EAGER_BUNDLED_PLUGIN_DEPS=1 node scripts/postinstall-bundled-plugins.mjs && \
     find dist -type f \( -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' -o -name '*.map' \) -delete && \
     node scripts/check-package-dist-imports.mjs /app
 
@@ -167,8 +167,13 @@ RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,shar
     --mount=type=cache,id=openclaw-bookworm-apt-lists,target=/var/lib/apt,sharing=locked \
     apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      ca-certificates procps hostname curl git lsof openssl && \
+      ca-certificates procps hostname curl git lsof openssl python3 golang-go wget && \
     update-ca-certificates
+
+# Install uv (Python package manager and tool runner)
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
+    ln -sf /root/.local/bin/uv /usr/local/bin/uv && \
+    ln -sf /root/.local/bin/uvx /usr/local/bin/uvx
 
 RUN chown node:node /app
 
