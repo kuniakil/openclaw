@@ -55,9 +55,11 @@
 - **Runtime 依賴處理 (Self-containment Check)**：
   - **觀察**：自 v2026.4.27 起，官方改用啟動時動態下載 Runtime (約 1GB)，導致 VPS 部署容易因網路/性能問題超時。
   - **原則**：理想的 Docker 鏡像應為「自包含」，即所有運作依賴應在編譯時包入，而非啟動後安裝。
-  - **狀態**：已於 v2026.4.29 版本中透過修改 `Dockerfile` 實現自定義優化。
-    - 啟用 `OPENCLAW_EAGER_BUNDLED_PLUGIN_DEPS=1` 預裝插件依賴。
-    - 透過 `apt-get` 預裝 `python3`, `golang-go`, `uv`。
+  - **狀態**：已於 v2026.4.29 版本中透過「官方推薦擴充模式」重構 `Dockerfile`。
+    - 在 `build` 階段啟用 `OPENCLAW_EAGER_BUNDLED_PLUGIN_DEPS=1` 確保插件依賴正確編譯。
+    - 透過官方 `OPENCLAW_DOCKER_APT_PACKAGES` 預裝 `python3`, `golang-go`, `wget`。
+    - 使用正規全局路徑安裝 `uv`，解決 `node` 用戶權限導致的偵測延遲。
+    - 修正後的 Image 體積約 1.2GB，兼顧自包含與運行效率。
   - **長期監控任務**：每次進版時，必須檢查官方 `Dockerfile` 是否已定案改為編譯期打包。若官方已實現類似邏輯，應評估移除我們的自定義 patch 以減少維護成本；若官方仍維持動態下載，則需持續將此優化 rebase 到新版。
 - **環境變數與掛載點變動**：
   - 檢查 `.yml` 中是否有新增的 `environment` 變數。

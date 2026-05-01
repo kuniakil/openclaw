@@ -70,8 +70,11 @@ COPY --from=ext-deps /out/ ./${OPENCLAW_BUNDLED_PLUGIN_DIR}/
 
 # Reduce OOM risk on low-memory hosts during dependency installation.
 # Docker builds on small VMs may otherwise fail with "Killed" (exit 137).
+# OPENCLAW_EAGER_BUNDLED_PLUGIN_DEPS ensures plugin native addons are built during compile.
 RUN --mount=type=cache,id=openclaw-pnpm-store,target=/root/.local/share/pnpm/store,sharing=locked \
-    NODE_OPTIONS=--max-old-space-size=2048 pnpm install --frozen-lockfile
+    NODE_OPTIONS=--max-old-space-size=2048 \
+    OPENCLAW_EAGER_BUNDLED_PLUGIN_DEPS=1 \
+    pnpm install --frozen-lockfile
 
 # pnpm v10+ may append peer-resolution hashes to virtual-store folder names; do not hardcode `.pnpm/...`
 # paths. Matrix's native downloader can hit transient release CDN errors while
@@ -131,7 +134,7 @@ RUN printf 'packages:\n  - .\n  - ui\n' > /tmp/pnpm-workspace.runtime.yaml && \
     done && \
     cp /tmp/pnpm-workspace.runtime.yaml pnpm-workspace.yaml && \
     CI=true NPM_CONFIG_FROZEN_LOCKFILE=false pnpm prune --prod && \
-    OPENCLAW_EAGER_BUNDLED_PLUGIN_DEPS=1 node scripts/postinstall-bundled-plugins.mjs && \
+    node scripts/postinstall-bundled-plugins.mjs && \
     find dist -type f \( -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' -o -name '*.map' \) -delete && \
     node scripts/check-package-dist-imports.mjs /app
 
@@ -167,13 +170,8 @@ RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,shar
     --mount=type=cache,id=openclaw-bookworm-apt-lists,target=/var/lib/apt,sharing=locked \
     apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      ca-certificates procps hostname curl git lsof openssl python3 golang-go wget && \
+      ca-certificates procps hostname curl git lsof openssl && \
     update-ca-certificates
-
-# Install uv (Python package manager and tool runner)
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
-    ln -sf /root/.local/bin/uv /usr/local/bin/uv && \
-    ln -sf /root/.local/bin/uvx /usr/local/bin/uvx
 
 RUN chown node:node /app
 
@@ -212,6 +210,13 @@ RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,shar
     if [ -n "$OPENCLAW_DOCKER_APT_PACKAGES" ]; then \
       apt-get update && \
       DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $OPENCLAW_DOCKER_APT_PACKAGES; \
+    fi
+
+# Optionally install uv (Python package manager and tool runner)
+# Build with: docker build --build-arg OPENCLAW_INSTALL_UV=1 ...
+ARG OPENCLAW_INSTALL_UV=""
+RUN if [ -n "$OPENCLAW_INSTALL_UV" ]; then \
+      curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=/usr/local/bin sh; \
     fi
 
 # Optionally install Chromium and Xvfb for browser automation.
