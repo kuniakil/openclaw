@@ -1,11 +1,10 @@
 # syntax=docker/dockerfile:1.7
 
 # ── Stage 1: Builder ───────────────────────────────────────────
-# Use official image as base to ensure binary compatibility
-FROM ghcr.io/openclaw/openclaw:2026.4.29 AS builder
-USER root
+# Use standard Node Bookworm image for building (robust build tools included)
+FROM node:24-bookworm AS builder
 
-# Install build-time dependencies needed for native addon compilation
+# Install additional build-time dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 make g++ curl ca-certificates unzip && \
     rm -rf /var/lib/apt/lists/*
@@ -18,16 +17,16 @@ ENV PATH="/root/.bun/bin:${PATH}"
 RUN corepack enable
 
 WORKDIR /app
-# Copy the entire project source for compilation
+# Copy project source
 COPY . .
 
 # Pre-package all dependencies including plugin native addons.
-# This produces a complete node_modules directory.
 RUN --mount=type=cache,id=openclaw-pnpm-store,target=/root/.local/share/pnpm/store,sharing=locked \
     OPENCLAW_EAGER_BUNDLED_PLUGIN_DEPS=1 \
     pnpm install --frozen-lockfile
 
 # Generate the materialized manifest so OpenClaw recognizes the cache
+# Hash for /app is f53b52ad6d21
 RUN node -e ' \
     const fs = require("node:fs"); \
     const pkg = JSON.parse(fs.readFileSync("package.json", "utf8")); \
@@ -53,7 +52,6 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=/usr/local/bin s
 
 # Inject pre-packaged dependencies into the official cache directory.
 # Directory name logic: openclaw-${version}-${pathHash}
-# /app hash is f53b52ad6d21
 ARG RUNTIME_DEPS_CACHE_DIR="/var/lib/openclaw/plugin-runtime-deps/openclaw-2026.4.29-f53b52ad6d21"
 RUN mkdir -p ${RUNTIME_DEPS_CACHE_DIR}
 
@@ -67,6 +65,3 @@ RUN chown -R node:node /var/lib/openclaw/plugin-runtime-deps
 # Revert to standard node user
 USER node
 WORKDIR /app
-
-# The official entrypoint and command from the base image are preserved.
-# They will now find the dependencies in the cache and skip staging.
