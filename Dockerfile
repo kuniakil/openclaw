@@ -7,7 +7,7 @@ USER root
 
 # Install build-time dependencies needed for native addon compilation
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 make g++ curl ca-certificates && \
+    python3 make g++ curl ca-certificates unzip && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Bun for build scripts
