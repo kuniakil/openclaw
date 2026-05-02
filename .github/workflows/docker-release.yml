@@ -1,19 +1,10 @@
 name: Docker Release
 
 on:
-  push:
-    tags:
-      - "v*"
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
-      - "**/*.mdx"
-      - ".agents/**"
-      - "skills/**"
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag to backfill (for example v2026.3.22)
+        description: Existing release tag to build (for example v2026.3.22)
         required: true
         type: string
 
@@ -156,6 +147,8 @@ jobs:
           cache-to: type=gha,mode=max,scope=docker-release-amd64
           build-args: |
             OPENCLAW_EXTENSIONS=diagnostics-otel
+            OPENCLAW_DOCKER_APT_PACKAGES=python3 golang-go wget
+            OPENCLAW_INSTALL_UV=1
           tags: ${{ steps.tags.outputs.value }}
           labels: ${{ steps.labels.outputs.value }}
           sbom: true
@@ -254,6 +247,8 @@ jobs:
           cache-to: type=gha,mode=max,scope=docker-release-arm64
           build-args: |
             OPENCLAW_EXTENSIONS=diagnostics-otel
+            OPENCLAW_DOCKER_APT_PACKAGES=python3 golang-go wget
+            OPENCLAW_INSTALL_UV=1
           tags: ${{ steps.tags.outputs.value }}
           labels: ${{ steps.labels.outputs.value }}
           sbom: true
