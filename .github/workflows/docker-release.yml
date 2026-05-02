@@ -1,19 +1,10 @@
 name: Docker Release
 
 on:
-  push:
-    tags:
-      - "v*"
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
-      - "**/*.mdx"
-      - ".agents/**"
-      - "skills/**"
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag to backfill (for example v2026.3.22)
+        description: Existing release tag to build (for example v2026.3.22)
         required: true
         type: string
 
@@ -109,7 +100,9 @@ jobs:
           if [[ "${SOURCE_REF}" == refs/tags/v* ]]; then
             version="${SOURCE_REF#refs/tags/v}"
             tags+=("${IMAGE}:${version}-amd64")
+            tags+=("${IMAGE}:latest-amd64")
             slim_tags+=("${IMAGE}:${version}-slim-amd64")
+            slim_tags+=("${IMAGE}:latest-slim-amd64")
           fi
           if [[ ${#tags[@]} -eq 0 ]]; then
             echo "::error::No amd64 tags resolved for ref ${SOURCE_REF}"
@@ -155,7 +148,9 @@ jobs:
           cache-from: type=gha,scope=docker-release-amd64
           cache-to: type=gha,mode=max,scope=docker-release-amd64
           build-args: |
-            OPENCLAW_EXTENSIONS=diagnostics-otel,codex
+            OPENCLAW_EXTENSIONS=diagnostics-otel
+            OPENCLAW_DOCKER_APT_PACKAGES=python3 golang-go wget
+            OPENCLAW_INSTALL_UV=1
           tags: ${{ steps.tags.outputs.value }}
           labels: ${{ steps.labels.outputs.value }}
           sbom: true
@@ -207,7 +202,9 @@ jobs:
           if [[ "${SOURCE_REF}" == refs/tags/v* ]]; then
             version="${SOURCE_REF#refs/tags/v}"
             tags+=("${IMAGE}:${version}-arm64")
+            tags+=("${IMAGE}:latest-arm64")
             slim_tags+=("${IMAGE}:${version}-slim-arm64")
+            slim_tags+=("${IMAGE}:latest-slim-arm64")
           fi
           if [[ ${#tags[@]} -eq 0 ]]; then
             echo "::error::No arm64 tags resolved for ref ${SOURCE_REF}"
@@ -253,7 +250,9 @@ jobs:
           cache-from: type=gha,scope=docker-release-arm64
           cache-to: type=gha,mode=max,scope=docker-release-arm64
           build-args: |
-            OPENCLAW_EXTENSIONS=diagnostics-otel,codex
+            OPENCLAW_EXTENSIONS=diagnostics-otel
+            OPENCLAW_DOCKER_APT_PACKAGES=python3 golang-go wget
+            OPENCLAW_INSTALL_UV=1
           tags: ${{ steps.tags.outputs.value }}
           labels: ${{ steps.labels.outputs.value }}
           sbom: true
@@ -302,8 +301,8 @@ jobs:
             version="${SOURCE_REF#refs/tags/v}"
             tags+=("${IMAGE}:${version}")
             slim_tags+=("${IMAGE}:${version}-slim")
-            # Manual backfills should only republish the requested version tags.
-            if [[ "${IS_MANUAL_BACKFILL}" != "1" && "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?$ ]]; then
+            # Add latest tag for stable versions (x.y.z without alpha/beta suffix)
+            if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
               tags+=("${IMAGE}:latest")
               slim_tags+=("${IMAGE}:slim")
             fi
