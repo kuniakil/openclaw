@@ -85,10 +85,14 @@ export function collectDockerAttestationErrors(params) {
     const predicates = new Set();
     for (const descriptor of attestationDescriptors) {
       const attestation = inspectAttestation(descriptor.digest);
-      if (attestation?.artifactType !== "application/vnd.docker.attestation.manifest.v1+json") {
+      const attestationType = attestation?.artifactType || attestation?.mediaType;
+      if (
+        attestationType !== "application/vnd.docker.attestation.manifest.v1+json" &&
+        attestationType !== "application/vnd.oci.image.manifest.v1+json"
+      ) {
         errors.push(
-          `${imageRef}: ${platformLabel} attestation ${descriptor.digest} has unexpected artifactType ${JSON.stringify(
-            attestation?.artifactType,
+          `${imageRef}: ${platformLabel} attestation ${descriptor.digest} has unexpected type ${JSON.stringify(
+            attestationType,
           )}`,
         );
       }
