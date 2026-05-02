@@ -55,12 +55,12 @@
 - **Runtime 依賴處理 (Self-containment Check)**：
   - **觀察**：自 v2026.4.27 起，官方改用啟動時動態下載 Runtime (約 1GB)，導致 VPS 部署容易因網路/性能問題超時。
   - **原則**：理想的 Docker 鏡像應為「自包含」，即所有運作依賴應在編譯時包入，而非啟動後安裝。
-  - **狀態**：已於 v2026.4.29 版本中透過「官方推薦擴充模式」重構 `Dockerfile`。
-    - 在 `build` 階段啟用 `OPENCLAW_EAGER_BUNDLED_PLUGIN_DEPS=1` 確保插件依賴正確編譯。
-    - 透過官方 `OPENCLAW_DOCKER_APT_PACKAGES` 預裝 `python3`, `golang-go`, `wget`。
-    - 使用正規全局路徑安裝 `uv`，解決 `node` 用戶權限導致的偵測延遲。
-    - 修正後的 Image 體積約 1.2GB，兼顧自包含與運行效率。
-  - **長期監控任務**：每次進版時，必須檢查官方 `Dockerfile` 是否已定案改為編譯期打包。若官方已實現類似邏輯，應評估移除我們的自定義 patch 以減少維護成本；若官方仍維持動態下載，則需持續將此優化 rebase 到新版。
+  - **狀態**：已於 v2026.5.2 版本中回歸「官方純正鏡像」策略。
+    - **效能突破**：官方於 v2026.4.30+ 修正了 Telegram typing 延遲，並將啟動修復改為 `verify-only`，解決了同步阻塞問題。
+    - **配置策略**：不再自定義編譯 Image，直接使用官方 `ghcr.io/openclaw/openclaw` 鏡像。
+    - **動態擴充**：透過 `.env` 的 `OPENCLAW_DOCKER_APT_PACKAGES` 安裝系統工具（Python 已被官方包回）。
+    - **最終結論**：Mac 啟動時間降至 2.6s，且回話絲滑，證明「對齊官方主分支」是目前最優解。
+  - **長期監控任務**：每次進版時，必須優先檢查官方 Release Notes 是否已解決已知的效能瓶頸。若官方已修復，則應移除所有自定義 Patch，保持 Fork 的純淨性。
 - **環境變數與掛載點變動**：
   - 檢查 `.yml` 中是否有新增的 `environment` 變數。
   - 檢查是否有新增的 `volumes` 需求。若有，必須主動提醒使用者在 Zeabur Dashboard 手動同步新增 Volume 掛載點。
