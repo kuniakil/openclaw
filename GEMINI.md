@@ -28,9 +28,15 @@
    ```
    *若有衝突，由 Gemini 協助分析並解決，優先保留個人自定義邏輯。*
 
-### 第三階段：同步遠端與存檔
-1. **強制推送主分支**：
+### 第三階段：同步遠端與清理 (Clean up)
+1. **清理冗餘工作流**：官方 main 分支包含大量 CI/CD 腳本，會消耗 GitHub Actions 分鐘數。
    ```bash
+   find .github/workflows -type f ! -name 'docker-release.yml' -delete
+   ```
+2. **強制推送主分支**：
+   ```bash
+   git add .github/workflows
+   git commit -m "chore: cleanup official workflows"
    git push origin main --force
    ```
    *注意：嚴禁執行 `git push origin [Tag名稱]` 以避免觸發重複的自動工作流。*
