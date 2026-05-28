@@ -256,3 +256,5 @@ extensions/**/.openclaw-runtime-deps-stamp.json
 .comux*
 Upgrade-Retrospective*.md
 Upgrade-Retrospective*.html
+GEMINI*.md
+GEMINI-MASTER-PLAYBOOK.md
