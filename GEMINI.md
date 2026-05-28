@@ -71,6 +71,28 @@
   - 檢查 `.yml` 中是否有新增的 `environment` 變數。
   - 檢查是否有新增的 `volumes` 需求。若有，必須主動提醒使用者在 Zeabur Dashboard 手動同步新增 Volume 掛載點。
 
-## 5. 個人自定義配置清單 (Customizations)
+## 6. GHCR Package 管理（重要）
+
+操作 GitHub Container Registry (GHCR) 前，**必須先閱讀**：
+```
+OPERATOR-GHCR-GUIDE.md
+```
+
+重點原則：
+- **絕對不刪「無 tag」的 version**（這些是實際 image data）
+- **只刪「有 tag」的 version**（只是指標，刪了不影響其他 images）
+- 刪除前先 `docker manifest inspect <tag>` 確認結構
+
+詳見：`OPERATOR-GHCR-GUIDE.md`
+
+## 7. 個人自定義配置清單 (Customizations)
+
 - **Docker Workflow**：修改 `.github/workflows/docker-release.yml`，將觸發條件限制為 `workflow_dispatch` 並修正標籤邏輯。
 - **Gitignore**：添加 Docker 執行期產生的數據檔案過濾。
+
+## 8. 個人操作文檔
+
+- `GEMINI.md` — 本文件，升級 SOP 與關鍵原則
+- `GEMINI-MASTER-PLAYBOOK.md` — 進階操作與疑難排解
+- `OPERATOR-GHCR-GUIDE.md` — GHCR 操作風險說明（**刪除 Package 前必看**）
+- `Upgrade-Retrospective-v*.md` — 每次升級的歷史記錄（在 .gitignore 中）

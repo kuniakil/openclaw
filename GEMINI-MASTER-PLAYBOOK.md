@@ -4,6 +4,16 @@
 
 ---
 
+## 0. 必讀：GHCR 操作風險
+
+操作 GitHub Container Registry (GHCR) 刪除 Package 版本前，**必須先閱讀** `OPERATOR-GHCR-GUIDE.md`。
+
+核心原則：
+- 絕對不刪「無 tag」的 version（這些是實際 image data，砍了所有引用它的 tags 全斷）
+- 只刪「有 tag」的 version（只是指標，安全）
+
+---
+
 ## 1. 核心哲學：穩健、透明、安全
 - **退可守 (Safety First)**：任何具有破壞性或大規模變更（如 Rebase, Reset）前，必須主動提議建立 `backup/` 分支。
 - **對齊官方標籤 (Tag Alignment)**：對於 Fork 的專案，升級時應優先對齊官方的「Release Tag」而非 `main` 的最新提交點。
