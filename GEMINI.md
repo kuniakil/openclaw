@@ -96,3 +96,16 @@ OPERATOR-GHCR-GUIDE.md
 - `GEMINI-MASTER-PLAYBOOK.md` — 進階操作與疑難排解
 - `OPERATOR-GHCR-GUIDE.md` — GHCR 操作風險說明（**刪除 Package 前必看**）
 - `Upgrade-Retrospective-v*.md` — 每次升級的歷史記錄（在 .gitignore 中）
+- `universal-agent-workflow.md` — 萬用 Agent 工作流文檔
+
+---
+
+## 🤖 AI 行為鐵律 (AI Behavior Rules)
+
+- **優先徵求使用者同意 (Prioritize User Permission)**：在修改任何程式碼、設定檔（特別是 `Dockerfile`、`.env`、`openclaw.json`）或連線資料庫之前，AI **必須**先在對話框中報告修改計畫，並獲得使用者明確同意後才可動手。
+- **動手前必先讀檔 (Look Before You Leap)**：禁止憑空猜測設定檔結構。在進行任何編輯前，AI **必須**先調用 `view_file` 工具閱讀目標檔案內容，理解當前結構後再做修改。
+- **功能重疊處理**：若自訂 Commit 的功能已在官方新版本中被原生支援，必須直接捨棄該自訂 Commit，改用官方的設定方式。
+- **衝突安全中止 (Safe Rollback)**：
+  - 當 `rebase` 或 `cherry-pick` 發生衝突，且無法在 1 輪內自動解決時，必須**立刻執行 `git rebase --abort` 或 `git cherry-pick --abort` 恢復原狀**。
+  - 禁止在衝突狀態下憑空猜測並修改程式碼。
+  - 中止後，向使用者詳細回報衝突檔案與原因，並提出建議方案，等待使用者指示。
