@@ -5,7 +5,7 @@
 ## 1. 核心原則
 - **退可守**：在大規模升級（Rebase）前，必須建立備份分支（Checkpoint）。
 - **對齊官方 Release**：升級必須以官方的 Release Tag（如 `v2026.4.27`）作為基準，而非直接對齊主分支的提交點。
-- **線性歷史 (Rebase)**：使用 `rebase` 將個人修改（如 Docker Workflow 調整）重新應用在新的官方 Tag 之上，保持 Git 歷史乾淨。
+- **線性歷史 (Rebase/Cherry-pick)**：使用 `cherry-pick` 或 `rebase` 將個人修改重新應用在新的官方 Tag 之上，保持 Git 歷史乾淨，避免使用 `git merge`。
 - **手動觸發建置**：為了節省資源並保持 Image Registry 整潔，嚴禁透過推送 Tag 自動觸發建置。必須使用 `workflow_dispatch` 手動指定 Tag。
 
 ## 2. 升級標準流程 (Standard Upgrade Workflow)
@@ -22,34 +22,33 @@
    ```bash
    git fetch upstream --tags
    ```
-2. **執行 Rebase**：將目前的 `main` 分支 rebase 到目標官方 Tag。
+2. **建立並切換至新版本分支**（以目標官方 Release Tag 為起點，維持線性歷史且不修改舊分支）：
    ```bash
-   git rebase v2026.4.27
+   git checkout -b my-config-v[新版本號] v[新版本號]
    ```
-   *若有衝突，由 Gemini 協助分析並解決，優先保留個人自定義邏輯。*
+3. **櫻桃挑選（Cherry-pick）自定義 commits**（依時間序從舊到新套用）：
+   ```bash
+   git cherry-pick <commit-hash-1> <commit-hash-2> ...
+   ```
+   *註：絕不使用 `git merge`，確保 Commit 歷史為純粹的單一軸線。*
 
-### 第三階段：同步遠端與清理 (Clean up)
-1. **清理冗餘工作流**：官方 main 分支包含大量 CI/CD 腳本，會消耗 GitHub Actions 分鐘數。
+### 第三階段：測試、清理與推回
+1. **測試確認**：確保本地執行單元測試通過（僅進行本地測試，**不**在 Mac 本地執行耗時的 Docker image 建置）。
+2. **清理冗餘工作流**：官方分支包含大量 CI/CD 腳本，會消耗 GitHub Actions 分鐘數。
    ```bash
    find .github/workflows -type f ! -name 'docker-release.yml' -delete
    ```
-2. **強制推送主分支**：
+3. **提交並推送分支至您的 GitHub**：
    ```bash
    git add .github/workflows
    git commit -m "chore: cleanup official workflows"
-   git push origin main --force
-   ```
-   *注意：嚴禁執行 `git push origin [Tag名稱]` 以避免觸發重複的自動工作流。*
-2. **建立新版里程碑分支**：
-   ```bash
-   git branch my-config-v2026.4.27
-   git push origin my-config-v2026.4.27
+   git push origin my-config-v[新版本號]
    ```
 
 ### 第四階段：觸發 Docker 建置
 1. **手動觸發 Workflow**：
    ```bash
-   gh workflow run docker-release.yml --repo kuniakil/openclaw -f tag=v2026.4.27
+   gh workflow run docker-release.yml --repo kuniakil/openclaw --ref my-config-v[新版本號] -f tag=v[新版本號]
    ```
 2. **監控進度**：使用 `gh run watch` 或網頁監控。
 
