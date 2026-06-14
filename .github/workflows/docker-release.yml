@@ -1,16 +1,6 @@
 name: Docker Release
 
 on:
-  push:
-    tags:
-      - "v*"
-      - "!v*-alpha.*"
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
-      - "**/*.mdx"
-      - ".agents/**"
-      - "skills/**"
   workflow_dispatch:
     inputs:
       tag:
@@ -82,10 +72,10 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "${DOCKERHUB_USERNAME}" || -z "${DOCKERHUB_TOKEN}" ]]; then
-            echo "::error::Docker Hub publishing requires DOCKERHUB_USERNAME and DOCKERHUB_TOKEN secrets."
-            exit 1
+            echo "::warning::Docker Hub credentials missing. Skipping Docker Hub publishing."
+          else
+            echo "Docker Hub publishing configured for ${DOCKERHUB_IMAGE}."
           fi
-          echo "Docker Hub publishing configured for ${DOCKERHUB_IMAGE}."
 
   # KEEP THIS WORKFLOW ON GITHUB-HOSTED RUNNERS.
   # DO NOT MOVE IT BACK TO BLACKSMITH WITHOUT RE-VALIDATING TAG BUILDS AND BACKFILLS.
@@ -157,7 +147,10 @@ jobs:
           tags=()
           slim_tags=()
           browser_tags=()
-          images=("${GHCR_IMAGE}" "${DOCKERHUB_IMAGE}")
+          images=("${GHCR_IMAGE}")
+          if [[ -n "${{ secrets.DOCKERHUB_USERNAME }}" ]]; then
+            images+=("${DOCKERHUB_IMAGE}")
+          fi
           browser_supported=0
           if grep -q '^ARG OPENCLAW_INSTALL_BROWSER' Dockerfile; then
             browser_supported=1
@@ -342,6 +335,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Login to Docker Hub
+        if: ${{ secrets.DOCKERHUB_USERNAME != '' }}
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
         with:
           registry: ${{ env.DOCKERHUB_REGISTRY }}
@@ -360,7 +354,10 @@ jobs:
           tags=()
           slim_tags=()
           browser_tags=()
-          images=("${GHCR_IMAGE}" "${DOCKERHUB_IMAGE}")
+          images=("${GHCR_IMAGE}")
+          if [[ -n "${{ secrets.DOCKERHUB_USERNAME }}" ]]; then
+            images+=("${DOCKERHUB_IMAGE}")
+          fi
           browser_supported=0
           if grep -q '^ARG OPENCLAW_INSTALL_BROWSER' Dockerfile; then
             browser_supported=1
@@ -538,6 +535,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Login to Docker Hub
+        if: ${{ secrets.DOCKERHUB_USERNAME != '' }}
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
         with:
           registry: ${{ env.DOCKERHUB_REGISTRY }}
@@ -568,22 +566,30 @@ jobs:
             version="${SOURCE_REF#refs/tags/v}"
             tags+=("${GHCR_IMAGE}:${version}")
             slim_tags+=("${GHCR_IMAGE}:${version}-slim")
-            dockerhub_tags+=("${DOCKERHUB_IMAGE}:${version}")
-            dockerhub_slim_tags+=("${DOCKERHUB_IMAGE}:${version}-slim")
+            if [[ -n "${{ secrets.DOCKERHUB_USERNAME }}" ]]; then
+              dockerhub_tags+=("${DOCKERHUB_IMAGE}:${version}")
+              dockerhub_slim_tags+=("${DOCKERHUB_IMAGE}:${version}-slim")
+            fi
             if [[ "${browser_supported}" == "1" ]]; then
               browser_tags+=("${GHCR_IMAGE}:${version}-browser")
-              dockerhub_browser_tags+=("${DOCKERHUB_IMAGE}:${version}-browser")
+              if [[ -n "${{ secrets.DOCKERHUB_USERNAME }}" ]]; then
+                dockerhub_browser_tags+=("${DOCKERHUB_IMAGE}:${version}-browser")
+              fi
             fi
             # Beta releases and manual backfills publish only immutable version tags;
             # do not advance latest/main aliases from those flows.
             if [[ "${IS_MANUAL_BACKFILL}" != "1" && "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?$ ]]; then
               tags+=("${GHCR_IMAGE}:latest" "${GHCR_IMAGE}:main")
               slim_tags+=("${GHCR_IMAGE}:slim" "${GHCR_IMAGE}:main-slim")
-              dockerhub_tags+=("${DOCKERHUB_IMAGE}:latest" "${DOCKERHUB_IMAGE}:main")
-              dockerhub_slim_tags+=("${DOCKERHUB_IMAGE}:slim" "${DOCKERHUB_IMAGE}:main-slim")
+              if [[ -n "${{ secrets.DOCKERHUB_USERNAME }}" ]]; then
+                dockerhub_tags+=("${DOCKERHUB_IMAGE}:latest" "${DOCKERHUB_IMAGE}:main")
+                dockerhub_slim_tags+=("${DOCKERHUB_IMAGE}:slim" "${DOCKERHUB_IMAGE}:main-slim")
+              fi
               if [[ "${browser_supported}" == "1" ]]; then
                 browser_tags+=("${GHCR_IMAGE}:latest-browser" "${GHCR_IMAGE}:main-browser")
-                dockerhub_browser_tags+=("${DOCKERHUB_IMAGE}:latest-browser" "${DOCKERHUB_IMAGE}:main-browser")
+                if [[ -n "${{ secrets.DOCKERHUB_USERNAME }}" ]]; then
+                  dockerhub_browser_tags+=("${DOCKERHUB_IMAGE}:latest-browser" "${DOCKERHUB_IMAGE}:main-browser")
+                fi
               fi
             fi
           fi
@@ -637,16 +643,18 @@ jobs:
             docker buildx imagetools create "${args[@]}" "$amd64_digest" "$arm64_digest"
           }
           create_manifest "${AMD64_DIGEST}" "${ARM64_DIGEST}" "${tags[@]}"
-          if [[ "${SOURCE_REF}" != refs/tags/v* ]]; then
-            echo "::error::No Docker Hub source refs resolved for ref ${SOURCE_REF}"
-            exit 1
+          if [[ -n "${{ secrets.DOCKERHUB_USERNAME }}" ]]; then
+            if [[ "${SOURCE_REF}" != refs/tags/v* ]]; then
+              echo "::error::No Docker Hub source refs resolved for ref ${SOURCE_REF}"
+              exit 1
+            fi
+            version="${SOURCE_REF#refs/tags/v}"
+            create_manifest "${DOCKERHUB_IMAGE}:${version}-amd64" "${DOCKERHUB_IMAGE}:${version}-arm64" "${dockerhub_tags[@]}"
           fi
-          version="${SOURCE_REF#refs/tags/v}"
-          create_manifest "${DOCKERHUB_IMAGE}:${version}-amd64" "${DOCKERHUB_IMAGE}:${version}-arm64" "${dockerhub_tags[@]}"
           if [[ -n "${BROWSER_TAGS}" ]]; then
             create_manifest "${AMD64_BROWSER_DIGEST}" "${ARM64_BROWSER_DIGEST}" "${browser_tags[@]}"
           fi
-          if [[ -n "${DOCKERHUB_BROWSER_TAGS}" ]]; then
+          if [[ -n "${{ secrets.DOCKERHUB_USERNAME }}" && -n "${DOCKERHUB_BROWSER_TAGS}" ]]; then
             create_manifest \
               "${DOCKERHUB_IMAGE}:${version}-browser-amd64" \
               "${DOCKERHUB_IMAGE}:${version}-browser-arm64" \
@@ -678,6 +686,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Login to Docker Hub
+        if: ${{ secrets.DOCKERHUB_USERNAME != '' }}
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
         with:
           registry: ${{ env.DOCKERHUB_REGISTRY }}
@@ -716,48 +725,71 @@ jobs:
             version="${SOURCE_REF#refs/tags/v}"
             multi_refs+=("${GHCR_IMAGE}:${version}")
             slim_multi_refs+=("${GHCR_IMAGE}:${version}-slim")
-            dockerhub_multi_refs+=("${DOCKERHUB_IMAGE}:${version}")
-            dockerhub_slim_multi_refs+=("${DOCKERHUB_IMAGE}:${version}-slim")
+            if [[ -n "${{ secrets.DOCKERHUB_USERNAME }}" ]]; then
+              dockerhub_multi_refs+=("${DOCKERHUB_IMAGE}:${version}")
+              dockerhub_slim_multi_refs+=("${DOCKERHUB_IMAGE}:${version}-slim")
+            fi
             amd64_refs+=(
               "${GHCR_IMAGE}:${version}-amd64"
               "${GHCR_IMAGE}:${version}-slim-amd64"
             )
-            dockerhub_amd64_refs+=(
-              "${DOCKERHUB_IMAGE}:${version}-amd64"
-              "${DOCKERHUB_IMAGE}:${version}-slim-amd64"
-            )
+            if [[ -n "${{ secrets.DOCKERHUB_USERNAME }}" ]]; then
+              dockerhub_amd64_refs+=(
+                "${DOCKERHUB_IMAGE}:${version}-amd64"
+                "${DOCKERHUB_IMAGE}:${version}-slim-amd64"
+              )
+            fi
             arm64_refs+=(
               "${GHCR_IMAGE}:${version}-arm64"
               "${GHCR_IMAGE}:${version}-slim-arm64"
             )
-            dockerhub_arm64_refs+=(
-              "${DOCKERHUB_IMAGE}:${version}-arm64"
-              "${DOCKERHUB_IMAGE}:${version}-slim-arm64"
-            )
+            if [[ -n "${{ secrets.DOCKERHUB_USERNAME }}" ]]; then
+              dockerhub_arm64_refs+=(
+                "${DOCKERHUB_IMAGE}:${version}-arm64"
+                "${DOCKERHUB_IMAGE}:${version}-slim-arm64"
+              )
+            fi
             if [[ "${browser_supported}" == "1" ]]; then
               multi_refs+=("${GHCR_IMAGE}:${version}-browser")
-              dockerhub_multi_refs+=("${DOCKERHUB_IMAGE}:${version}-browser")
+              if [[ -n "${{ secrets.DOCKERHUB_USERNAME }}" ]]; then
+                dockerhub_multi_refs+=("${DOCKERHUB_IMAGE}:${version}-browser")
+              fi
               amd64_refs+=("${GHCR_IMAGE}:${version}-browser-amd64")
-              dockerhub_amd64_refs+=("${DOCKERHUB_IMAGE}:${version}-browser-amd64")
+              if [[ -n "${{ secrets.DOCKERHUB_USERNAME }}" ]]; then
+                dockerhub_amd64_refs+=("${DOCKERHUB_IMAGE}:${version}-browser-amd64")
+              fi
               arm64_refs+=("${GHCR_IMAGE}:${version}-browser-arm64")
-              dockerhub_arm64_refs+=("${DOCKERHUB_IMAGE}:${version}-browser-arm64")
+              if [[ -n "${{ secrets.DOCKERHUB_USERNAME }}" ]]; then
+                dockerhub_arm64_refs+=("${DOCKERHUB_IMAGE}:${version}-browser-arm64")
+              fi
             fi
             # Beta releases and manual backfills publish only immutable version tags;
             # do not advance latest/main aliases from those flows.
             if [[ "${IS_MANUAL_BACKFILL}" != "1" && "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?$ ]]; then
               multi_refs+=("${GHCR_IMAGE}:latest" "${GHCR_IMAGE}:main")
               slim_multi_refs+=("${GHCR_IMAGE}:slim" "${GHCR_IMAGE}:main-slim")
-              dockerhub_multi_refs+=("${DOCKERHUB_IMAGE}:latest" "${DOCKERHUB_IMAGE}:main")
-              dockerhub_slim_multi_refs+=("${DOCKERHUB_IMAGE}:slim" "${DOCKERHUB_IMAGE}:main-slim")
+              if [[ -n "${{ secrets.DOCKERHUB_USERNAME }}" ]]; then
+                dockerhub_multi_refs+=("${DOCKERHUB_IMAGE}:latest" "${DOCKERHUB_IMAGE}:main")
+                dockerhub_slim_multi_refs+=("${DOCKERHUB_IMAGE}:slim" "${DOCKERHUB_IMAGE}:main-slim")
+              fi
               if [[ "${browser_supported}" == "1" ]]; then
                 multi_refs+=("${GHCR_IMAGE}:latest-browser" "${GHCR_IMAGE}:main-browser")
-                dockerhub_multi_refs+=("${DOCKERHUB_IMAGE}:latest-browser" "${DOCKERHUB_IMAGE}:main-browser")
+                if [[ -n "${{ secrets.DOCKERHUB_USERNAME }}" ]]; then
+                  dockerhub_multi_refs+=("${DOCKERHUB_IMAGE}:latest-browser" "${DOCKERHUB_IMAGE}:main-browser")
+                fi
               fi
             fi
           fi
-          if [[ ${#multi_refs[@]} -eq 0 || ${#amd64_refs[@]} -eq 0 || ${#arm64_refs[@]} -eq 0 || ${#dockerhub_multi_refs[@]} -eq 0 || ${#dockerhub_amd64_refs[@]} -eq 0 || ${#dockerhub_arm64_refs[@]} -eq 0 ]]; then
-            echo "::error::No Docker image refs resolved for ref ${SOURCE_REF}"
-            exit 1
+          if [[ -n "${{ secrets.DOCKERHUB_USERNAME }}" ]]; then
+            if [[ ${#multi_refs[@]} -eq 0 || ${#amd64_refs[@]} -eq 0 || ${#arm64_refs[@]} -eq 0 || ${#dockerhub_multi_refs[@]} -eq 0 || ${#dockerhub_amd64_refs[@]} -eq 0 || ${#dockerhub_arm64_refs[@]} -eq 0 ]]; then
+              echo "::error::No Docker image refs resolved for ref ${SOURCE_REF}"
+              exit 1
+            fi
+          else
+            if [[ ${#multi_refs[@]} -eq 0 || ${#amd64_refs[@]} -eq 0 || ${#arm64_refs[@]} -eq 0 ]]; then
+              echo "::error::No Docker image refs resolved for ref ${SOURCE_REF}"
+              exit 1
+            fi
           fi
           {
             echo "multi<<EOF"
@@ -808,13 +840,15 @@ jobs:
           node scripts/verify-docker-attestations.mjs \
             --platform linux/arm64 \
             "${arm64_refs[@]}"
-          node scripts/verify-docker-attestations.mjs \
-            --platform linux/amd64 \
-            --platform linux/arm64 \
-            "${dockerhub_multi_refs[@]}"
-          node scripts/verify-docker-attestations.mjs \
-            --platform linux/amd64 \
-            "${dockerhub_amd64_refs[@]}"
-          node scripts/verify-docker-attestations.mjs \
-            --platform linux/arm64 \
-            "${dockerhub_arm64_refs[@]}"
+          if [[ -n "${{ secrets.DOCKERHUB_USERNAME }}" ]]; then
+            node scripts/verify-docker-attestations.mjs \
+              --platform linux/amd64 \
+              --platform linux/arm64 \
+              "${dockerhub_multi_refs[@]}"
+            node scripts/verify-docker-attestations.mjs \
+              --platform linux/amd64 \
+              "${dockerhub_amd64_refs[@]}"
+            node scripts/verify-docker-attestations.mjs \
+              --platform linux/arm64 \
+              "${dockerhub_arm64_refs[@]}"
+          fi
