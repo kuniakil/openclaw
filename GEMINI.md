@@ -8,6 +8,7 @@
 - **對齊官方 Release**：升級必須以官方的 Release Tag（如 `v2026.4.27`）作為基準，而非直接對齊主分支的提交點。
 - **線性歷史 (Rebase/Cherry-pick)**：使用 `cherry-pick` 或 `rebase` 將個人修改重新應用在新的官方 Tag 之上，保持 Git 歷史乾淨，避免使用 `git merge`。
 - **手動觸發建置**：為了節省資源並保持 Image Registry 整潔，嚴禁透過推送 Tag 自動觸發建置。必須使用 `workflow_dispatch` 手動指定 Tag。
+- **Tag 推送安全（重要）**：絕不能將從 `upstream` 抓取的官方原始 Tag 直接推送至 `origin`。必須先在本地分支套用完自定義 commits 後，將 Tag 重新指派至自定義分支的最新 commit，最後才能推送到遠端。這樣可以防止觸發官方原生工作流的自動建置。
 
 ## 2. 升級標準流程 (Standard Upgrade Workflow)
 
@@ -47,6 +48,13 @@
    git add .github/workflows
    git commit -m "chore: cleanup official workflows"
    git push origin my-config-v[新版本號]
+   ```
+4. **重新指派並強制推送 Tag（防止觸發官方自動建置）**：
+   ```bash
+   git tag -d v[新版本號]
+   git tag v[新版本號]
+   git push origin :refs/tags/v[新版本號]
+   git push origin v[新版本號]
    ```
 
 ### 第四階段：觸發 Docker 建置
