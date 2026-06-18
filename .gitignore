@@ -303,3 +303,11 @@ extensions/diffs-language-pack/assets/viewer-runtime.js
 /.opengrep-out/
 /.crabbox-artifacts
 .comux*
+
+# Personal retrospectives, custom guidebooks and workflow helpers
+Upgrade-Retrospective*.md
+Upgrade-Retrospective*.html
+GEMINI*.md
+GEMINI-MASTER-PLAYBOOK.md
+universal-agent-workflow.md
+
