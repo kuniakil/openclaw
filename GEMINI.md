@@ -110,7 +110,7 @@ OPERATOR-GHCR-GUIDE.md
 - `GEMINI.md` — 本文件，升級 SOP 與關鍵原則
 - `GEMINI-MASTER-PLAYBOOK.md` — 進階操作與疑難排解
 - `OPERATOR-GHCR-GUIDE.md` — GHCR 操作風險說明（**刪除 Package 前必看**）
-- `Upgrade-Retrospective-v*.md` — 每次升級的歷史記錄（在 .gitignore 中）
+- `Upgrade-Retrospective-v*.md` — 每次升級的歷史記錄（在 `.git/info/exclude` 中）
 - `universal-agent-workflow.md` — 萬用 Agent 工作流文檔
 
 ---
@@ -124,3 +124,9 @@ OPERATOR-GHCR-GUIDE.md
   - 當 `rebase` 或 `cherry-pick` 發生衝突，且無法在 1 輪內自動解決時，必須**立刻執行 `git rebase --abort` 或 `git cherry-pick --abort` 恢復原狀**。
   - 禁止在衝突狀態下憑空猜測並修改程式碼。
   - 中止後，向使用者詳細回報衝突檔案與原因，並提出建議方案，等待使用者指示。
+- **Ignore 規則分流 (Ignore Scope Routing)**：當使用者說「把 X 加到 gitignore」或「ignore X」時，AI **必須先判斷 X 的範圍**再決定加到哪，**不可一股腦加到 `.gitignore`**：
+  - **專案共用 artifact**（每個跑專案的人都會產生；是專案設計的一部分）→ repo 根目錄 `.gitignore`
+  - **個人本機 artifact**（只有這台機器／這個 fork 才有的 runtime、tooling、筆記）→ `.git/info/exclude`
+  - **跨所有 repo 的個人偏好**（macOS `.DS_Store`、JetBrains `.idea/`、vim `*.swp`）→ `~/.gitignore_global`
+  - **判斷流程**：(1) 看檔案位置（個人 home？個人工具？project config？）(2) 問「其他人 clone 也會有嗎？」(3) 問「推到 GitHub 會出事嗎？」(4) 不明確就**先問使用者**，不要預設。
+  - **反例**：不要把個人升級 retro、個人 playbook（如 `GEMINI*.md`、`OPERATOR-GHCR-GUIDE.md`）加到共用 `.gitignore`——那是 fork 個人資產，不該污染團隊契約。
