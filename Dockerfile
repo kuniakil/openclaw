@@ -198,7 +198,7 @@ RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,shar
     --mount=type=cache,id=openclaw-bookworm-apt-lists,target=/var/lib/apt,sharing=locked \
     apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      ca-certificates curl git hostname lsof openssl procps python3 tini openssh-server openssh-client && \
+      ca-certificates curl git hostname lsof openssl procps python3 tini openssh-server openssh-client ffmpeg && \
     mkdir -p /var/run/sshd && ssh-keygen -A && \
     update-ca-certificates
 
@@ -315,6 +315,12 @@ RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,shar
         docker-ce-cli docker-compose-plugin; \
     fi
 
+# Audio STT CLI fallback: smart wrapper for fast-whisper
+# Normal path: deps on hostpath, just run.
+# Fallback: deps missing, lazy-install to hostpath.
+COPY assets/whisper /usr/local/bin/whisper
+RUN chmod 0755 /usr/local/bin/whisper && chown root:root /usr/local/bin/whisper
+
 # Expose the CLI binary without requiring npm global writes as non-root.
 RUN ln -sf /app/openclaw.mjs /usr/local/bin/openclaw \
  && chmod 755 /app/openclaw.mjs
@@ -333,6 +339,19 @@ RUN install -d -m 0755 -o node -g node /home/node/.config && \
     stat -c '%U:%G %a' /home/node/.openclaw/workspace | grep -qx 'node:node 700' && \
     stat -c '%U:%G %a' /home/node/.config | grep -qx 'node:node 755' && \
     stat -c '%U:%G %a' /home/node/.config/openclaw | grep -qx 'node:node 700'
+
+# Install edge-tts for TTS tool support.
+# Uses apt python3-pip (avoids curl get-pip.py network dependency).
+# --prefer-binary forces pre-built wheels, preventing ARM64 source compilation hangs.
+# Must run after install -d creates /home/node/.openclaw (node:node 700)
+# so root can still create subdirs; chown -R re-assigns ownership at the end.
+RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=openclaw-bookworm-apt-lists,target=/var/lib/apt,sharing=locked \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3-pip && \
+    pip3 install --prefer-binary --break-system-packages \
+      --target=/home/node/.openclaw/edge-tts-lib edge-tts && \
+    chown -R node:node /home/node/.openclaw
 
 ENV NODE_ENV=production
 
