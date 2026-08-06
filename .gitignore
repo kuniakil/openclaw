@@ -256,7 +256,6 @@ dist/protocol.schema.json
 .dev-state
 docs/superpowers
 .superpowers/
-.gitignore
 test/config-form.analyze.telegram.test.ts
 ui/src/ui/theme-variants.browser.test.ts
 ui/src/ui/__screenshots__
