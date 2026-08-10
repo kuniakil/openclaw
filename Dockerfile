@@ -199,9 +199,12 @@ RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,shar
     --mount=type=cache,id=openclaw-bookworm-apt-lists,target=/var/lib/apt,sharing=locked \
     apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      ca-certificates curl git hostname lsof openssl procps python3 tini openssh-server openssh-client ffmpeg && \
+      ca-certificates curl git hostname lsof openssl procps python3 tini openssh-server openssh-client ffmpeg rsync locales && \
     mkdir -p /var/run/sshd && ssh-keygen -A && \
     update-ca-certificates
+
+    ENV LANG=C.UTF-8 \
+        LC_ALL=C.UTF-8
 
 RUN chown node:node /app
 
