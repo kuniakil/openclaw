@@ -35,7 +35,7 @@ jobs:
             echo "Docker alpha image publishing is disabled."
             exit 1
           fi
-          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]{4}\.[1-9][0-9]*\.[1-9][0-9]*(-[1-9][0-9]*)?(-beta\.[1-9][0-9]*)?$ ]]; then
+          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]{4}\.[1-9][0-9]*\.[1-9][0-9]*(-[0-9]+)?(-beta\.[1-9][0-9]*)?$ ]]; then
             echo "Invalid release tag: ${RELEASE_TAG}"
             exit 1
           fi
