@@ -201,10 +201,23 @@ RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,shar
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       ca-certificates curl git hostname lsof openssl procps python3 tini openssh-server openssh-client ffmpeg rsync locales && \
     mkdir -p /var/run/sshd && ssh-keygen -A && \
-    update-ca-certificates
+    update-ca-certificates && \
+    echo "C.UTF-8 UTF-8" > /etc/locale.gen && \
+    echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen && \
+    echo "zh_TW.UTF-8 UTF-8" >> /etc/locale.gen && \
+    locale-gen && \
+    echo "LANG=C.UTF-8" > /etc/default/locale && \
+    echo "LC_ALL=C.UTF-8" >> /etc/default/locale && \
+    echo "export LANG=C.UTF-8" >> /etc/profile && \
+    echo "export LC_ALL=C.UTF-8" >> /etc/profile && \
+    echo "export LANG=C.UTF-8" >> /home/node/.bashrc && \
+    echo "export LC_ALL=C.UTF-8" >> /home/node/.bashrc && \
+    echo "export LANG=C.UTF-8" >> /root/.bashrc && \
+    echo "export LC_ALL=C.UTF-8" >> /root/.bashrc
 
-    ENV LANG=C.UTF-8 \
-        LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    LANGUAGE=C.UTF-8
 
 RUN chown node:node /app
 
