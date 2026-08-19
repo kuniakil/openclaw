@@ -357,15 +357,14 @@ RUN install -d -m 0755 -o node -g node /home/node/.config && \
     stat -c '%U:%G %a' /home/node/.config | grep -qx 'node:node 755' && \
     stat -c '%U:%G %a' /home/node/.config/openclaw | grep -qx 'node:node 700'
 
-# Install edge-tts and faster-whisper for TTS and STT tool support.
+# Install edge-tts and faster-whisper for TTS and STT tool support globally.
 # Uses apt python3-pip (avoids curl get-pip.py network dependency).
 # --prefer-binary forces pre-built wheels, preventing ARM64 source compilation hangs.
-# Must run after install -d creates /home/node/.openclaw (node:node 700)
-# so root can still create subdirs; chown -R re-assigns ownership at the end.
 RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,id=openclaw-bookworm-apt-lists,target=/var/lib/apt,sharing=locked \
     apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3-pip && \
+    pip3 install --prefer-binary --break-system-packages edge-tts faster-whisper && \
     pip3 install --prefer-binary --break-system-packages \
       --target=/home/node/.openclaw/edge-tts-lib edge-tts && \
     pip3 install --prefer-binary --break-system-packages \
