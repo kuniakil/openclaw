@@ -3,7 +3,8 @@
 
 set -e
 
-# Lazy install fallback: PEP 668 + stripped Python container
+# Pre-installed faster-whisper fallback (pre-baked in Docker image)
+# Lazy install fallback only if missing (for non-Docker or bare-metal custom setups)
 if [ ! -d "/home/node/.openclaw/whisper-lib" ] || \
    ! /usr/bin/python3 -c "import sys; sys.path.insert(0,'/home/node/.openclaw/whisper-lib'); import faster_whisper" 2>/dev/null; then
     echo "[whisper] lazy-installing faster-whisper to hostpath..." >&2
@@ -16,7 +17,7 @@ if [ ! -d "/home/node/.openclaw/whisper-lib" ] || \
 fi
 
 # Wire Python path
-export PYTHONPATH="/home/node/.openclaw/whisper-lib:/home/node/.openclaw/whisper-pip${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="/home/node/.openclaw/whisper-lib:/home/node/.openclaw/whisper-pip:/home/node/.openclaw/edge-tts-lib${PYTHONPATH:+:$PYTHONPATH}"
 
 # Strip --model flag (use base int8 hard-coded in whisper-cli.py)
 ARGS=()
