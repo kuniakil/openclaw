@@ -214,16 +214,36 @@ export function sanitizeGeminiEmbedding(values: number[], expectedDimensions?: n
   return sanitizeAndNormalizeEmbedding(values);
 }
 
+async function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+let lastGeminiEmbeddingRequestTime = 0;
+const MIN_GEMINI_EMBEDDING_INTERVAL_MS = 1200; // Rate pacing: ~50 requests/min maximum to respect 15-60 RPM limits
+
 async function fetchGeminiEmbeddingPayload(params: {
   client: GeminiEmbeddingClient;
   endpoint: string;
   body: unknown;
   signal?: AbortSignal;
 }): Promise<Record<string, unknown>> {
+  // Pacing: ensure minimum spacing between embedding calls to prevent 429 burst limit exhaustion
+  const now = Date.now();
+  const timeSinceLast = now - lastGeminiEmbeddingRequestTime;
+  if (timeSinceLast < MIN_GEMINI_EMBEDDING_INTERVAL_MS) {
+    await sleepMs(MIN_GEMINI_EMBEDDING_INTERVAL_MS - timeSinceLast);
+  }
+  lastGeminiEmbeddingRequestTime = Date.now();
+
   return await executeWithApiKeyRotation({
     provider: "google",
     apiKeys: params.client.apiKeys,
-    transientRetry: providerOperationRetryConfig("read"),
+    transientRetry: {
+      attempts: 4,
+      baseDelayMs: 2000,
+      maxDelayMs: 15000,
+      signal: params.signal,
+    },
     execute: async (apiKey) => {
       const authHeaders = parseGeminiAuth(apiKey);
       const headers = {
