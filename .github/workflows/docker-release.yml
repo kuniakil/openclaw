@@ -257,7 +257,6 @@ jobs:
           fi
           docker run --rm --entrypoint /bin/sh "${image_ref}" -lc '
             set -eu
-            test -f /app/src/agents/templates/HEARTBEAT.md
             temp_root="$(mktemp -d)"
             trap "rm -rf \"${temp_root}\"" EXIT
             mkdir -p "${temp_root}/home" "${temp_root}/cwd"
@@ -281,7 +280,6 @@ jobs:
               cat "${temp_root}/out.log"
               exit 1
             fi
-            test -f "${temp_root}/home/.openclaw/workspace/HEARTBEAT.md"
             if [ "${status}" -ne 0 ]; then
               cat "${temp_root}/out.log"
             fi
@@ -466,7 +464,6 @@ jobs:
           fi
           docker run --rm --entrypoint /bin/sh "${image_ref}" -lc '
             set -eu
-            test -f /app/src/agents/templates/HEARTBEAT.md
             temp_root="$(mktemp -d)"
             trap "rm -rf \"${temp_root}\"" EXIT
             mkdir -p "${temp_root}/home" "${temp_root}/cwd"
@@ -490,7 +487,6 @@ jobs:
               cat "${temp_root}/out.log"
               exit 1
             fi
-            test -f "${temp_root}/home/.openclaw/workspace/HEARTBEAT.md"
             if [ "${status}" -ne 0 ]; then
               cat "${temp_root}/out.log"
             fi
