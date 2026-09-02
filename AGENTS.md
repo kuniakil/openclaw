@@ -20,6 +20,7 @@ Skills own workflows; root owns hard policy and routing. Product direction and m
 - Product/docs/UI/changelog wording: "plugin/plugins"; `extensions/` is internal.
 - New channel/plugin/app/doc surface: update `.github/labeler.yml` + GH labels.
 - New `AGENTS.md`: add sibling `CLAUDE.md` symlink; edit `AGENTS.md` only.
+- Custom Branch Upgrades (`my-config-v2026.x.xx`): preserve Dockerfile tweaks (rsync/UTF-8), docker-release.yml fixes, and workflow removal commits (`find .github/workflows -type f ! -name 'docker-release.yml' -delete`). Never push untrimmed official workflows to GitHub to prevent unwanted CI/E2E execution. Choose `git cherry-pick` or `git rebase` based on conflict complexity.
 
 ## Repair Doctrine
 

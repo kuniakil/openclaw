@@ -405,6 +405,53 @@ RUN install -d -m 0755 -o node -g node /home/node/.config && \
     stat -c '%U:%G %a' /home/node/.config | grep -qx 'node:node 755' && \
     stat -c '%U:%G %a' /home/node/.config/openclaw | grep -qx 'node:node 700'
 
+# Custom: Generate UTF-8 locales and install rsync
+RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=openclaw-bookworm-apt-lists,target=/var/lib/apt,sharing=locked \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      locales rsync && \
+    echo "C.UTF-8 UTF-8" > /etc/locale.gen && \
+    echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen && \
+    echo "zh_TW.UTF-8 UTF-8" >> /etc/locale.gen && \
+    locale-gen && \
+    echo "LANG=C.UTF-8" > /etc/default/locale && \
+    echo "LC_ALL=C.UTF-8" >> /etc/default/locale && \
+    printf 'export LANG=C.UTF-8\nexport LC_ALL=C.UTF-8\n' >> /etc/profile && \
+    printf 'export LANG=C.UTF-8\nexport LC_ALL=C.UTF-8\n' >> /home/node/.bashrc && \
+    printf 'export LANG=C.UTF-8\nexport LC_ALL=C.UTF-8\n' >> /root/.bashrc
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    LANGUAGE=C.UTF-8
+
+# Custom: Install faster-whisper, edge-tts, and ffmpeg for audio TTS/STT pipelines
+RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=openclaw-bookworm-apt-lists,target=/var/lib/apt,sharing=locked \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3-pip ffmpeg && \
+    pip3 install --prefer-binary --break-system-packages \
+      --target=/usr/local/lib/faster-whisper faster-whisper && \
+    pip3 install --prefer-binary --break-system-packages \
+      faster-whisper && \
+    pip3 install --prefer-binary --break-system-packages \
+      --target=/home/node/.openclaw/edge-tts-lib edge-tts && \
+    pip3 install --prefer-binary --break-system-packages \
+      edge-tts && \
+    chown -R node:node /home/node/.openclaw
+ENV PYTHONPATH="/usr/local/lib/faster-whisper"
+
+# Custom: Audio STT CLI wrapper for fast-whisper
+COPY assets/whisper /usr/local/bin/whisper
+RUN chmod 0755 /usr/local/bin/whisper && chown root:root /usr/local/bin/whisper
+
+# Custom: SSH server support for Zeabur deployment
+RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,id=openclaw-bookworm-apt-lists,target=/var/lib/apt,sharing=locked \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openssh-server && \
+    mkdir -p /var/run/sshd && ssh-keygen -A
+COPY --chmod=0755 docker/entrypoint-ssh.sh ./docker/entrypoint-ssh.sh
+
 ENV NODE_ENV=production
 
 # Security hardening: Run as non-root user
