@@ -219,7 +219,7 @@ async function sleepMs(ms: number): Promise<void> {
 }
 
 let lastGeminiEmbeddingRequestTime = 0;
-const MIN_GEMINI_EMBEDDING_INTERVAL_MS = 1200; // Rate pacing: ~50 requests/min maximum to respect 15-60 RPM limits
+const MIN_GEMINI_EMBEDDING_INTERVAL_MS = 4200; // Rate pacing: ~14 requests/min maximum to respect Gemini Free Tier 15 RPM limit
 
 async function fetchGeminiEmbeddingPayload(params: {
   client: GeminiEmbeddingClient;
@@ -239,9 +239,9 @@ async function fetchGeminiEmbeddingPayload(params: {
     provider: "google",
     apiKeys: params.client.apiKeys,
     transientRetry: {
-      attempts: 4,
-      baseDelayMs: 2000,
-      maxDelayMs: 15000,
+      attempts: 5,
+      baseDelayMs: 10000,
+      maxDelayMs: 30000,
       signal: params.signal,
     },
     execute: async (apiKey) => {
