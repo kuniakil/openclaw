@@ -21,10 +21,9 @@
 4. **Dockerfile updated:**
    * Re-applied custom layers (UTF-8 locales, rsync, TTS/STT, SSH)
    * Integrated upstream fix: `COPY scripts/lib/package-lifecycle-marker.mjs` (fixes #134231)
-5. **Embedding rate-pacing patch removed (Option A):**
-   * Our custom `sleepMs`, `lastGeminiEmbeddingRequestTime`, `MIN_GEMINI_EMBEDDING_INTERVAL_MS` patch is intentionally removed, aligning with upstream v2026.8.2.
-   * Upstream now uses `providerOperationRetryConfig("read")` standard retry.
-   * **Monitor:** Watch for Gemini embedding 429 errors post-deploy. If free-tier burst issues recur before upstream PR #128945 lands, re-evaluate Option C (rate-pacing only, no custom retry).
+5. **Gemini Embedding Rate-Pacing Restored (Option C):**
+   * Upstream v2026.8.2 did not yet include PR #128945, so testing revealed Gemini Free Tier 429 quota exhaustion recurred during restart/memory sync spikes.
+   * Re-applied Option C: `MIN_GEMINI_EMBEDDING_INTERVAL_MS = 1200ms` rate pacing + exponential backoff retry (2s ~ 15s) in `extensions/google/embedding-provider.ts`.
 
 ---
 
@@ -34,7 +33,7 @@
 |---|---|---|---|
 | `.github/workflows/*` | Only keep `docker-release.yml` | Updated/added workflows | Deleted all unused official workflows via policy command. |
 | `Dockerfile` | Custom TTS/STT, SSH, locales | Added `COPY package-lifecycle-marker.mjs` (build stage) | Re-applied custom layers; inserted new COPY line. |
-| `extensions/google/embedding-provider.ts` | rate-pacing + backoff patch | Removed same code, use `providerOperationRetryConfig("read")` | **Option A: Follow upstream, patch removed.** |
+| `extensions/google/embedding-provider.ts` | rate-pacing + backoff patch | Removed rate-pacing | **Option C: Re-applied rate pacing (1200ms) + exponential backoff.** |
 | `AGENTS.md` | Custom upgrade policy appended | Updated policy rules | Took official version, re-appended custom block. |
 | `.gitignore` | Custom `.aider*` ignore | No change | Confirmed present. |
 
@@ -42,11 +41,9 @@
 
 ## Upstream Tracking Note: Embedding 429 & Rate Limit Issues
 
-我們的 rate-pacing patch 在本次升級中對齊官方移除。後續追蹤：
-
 * **上游核心 PR（仍待合併）：**
   * **PR #128945** (`fix(memory): exhausted-quota embedding errors retry forever and starve the sync queue`)
     修復層級：HTTP boundary `Retry-After` 解析、致命錯誤 terminal 標記、Remote provider degradation lifecycle。
-* **監控策略：**
-  * 若 Gemini Free Tier 環境在 v2026.8.2 部署後出現 embedding 429 burst，可採 Option C：保留 1200ms pacing，使用官方 `providerOperationRetryConfig("read")`。
-  * 待 PR #128945 合併並發布後，可完全依賴官方標準實作。
+* **策略與實測結果：**
+  * 實測證實若不加 rate-pacing，在重啟時 multiple memory sync 尖峰下 Gemini Free Tier（15 RPM）必然觸發 429 `RESOURCE_EXHAUSTED`。
+  * 採用 Option C 維持 1200ms 請求間隔限制，確保生產環境穩定。
