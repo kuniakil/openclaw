@@ -360,3 +360,4 @@ Mechanics only; policy lives above.
 - Never edit `node_modules`.
 - Local-only `.agents` ignores: `.git/info/exclude`, not repo `.gitignore`.
 - External messaging: follow `docs/concepts/streaming.md` (no token-delta channel messages).
+- **Local Resource Constraint (Mac Host Protection)**: DO NOT run heavy CI validation scripts (`pnpm check:changed`, `pnpm tsgo:all`, `vitest`, or local `docker build`) directly on the local machine. `tsgo` and full typechecks rapidly exhaust CPU/memory and freeze the host macOS desktop. Local verification MUST only check git status, file diffs, and lightweight syntax. Offload all container builds, heavy linting, and full typechecks to GitHub Actions (`docker-release.yml`).
