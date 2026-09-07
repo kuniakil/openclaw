@@ -214,12 +214,25 @@ export function sanitizeGeminiEmbedding(values: number[], expectedDimensions?: n
   return sanitizeAndNormalizeEmbedding(values);
 }
 
+// Custom: Rate pacing for Gemini Free Tier 15 RPM limit
+let lastGeminiEmbeddingRequestTime = 0;
+const MIN_GEMINI_EMBEDDING_INTERVAL_MS = 4200; // ~14 requests/min maximum to respect Gemini Free Tier 15 RPM limit
+
 async function fetchGeminiEmbeddingPayload(params: {
   client: GeminiEmbeddingClient;
   endpoint: string;
   body: unknown;
   signal?: AbortSignal;
 }): Promise<Record<string, unknown>> {
+  // Custom: Enforce minimum interval between Gemini embedding requests
+  const now = Date.now();
+  const timeSinceLast = now - lastGeminiEmbeddingRequestTime;
+  if (timeSinceLast < MIN_GEMINI_EMBEDDING_INTERVAL_MS) {
+    await new Promise((resolve) =>
+      setTimeout(resolve, MIN_GEMINI_EMBEDDING_INTERVAL_MS - timeSinceLast),
+    );
+  }
+  lastGeminiEmbeddingRequestTime = Date.now();
   return await executeWithApiKeyRotation({
     provider: "google",
     apiKeys: params.client.apiKeys,
