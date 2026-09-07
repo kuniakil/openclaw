@@ -253,7 +253,9 @@ function resolveMemoryIndexConcurrency(params: {
   if (typeof configured === "number" && Number.isFinite(configured)) {
     return Math.max(1, Math.floor(configured));
   }
-  return params.providerId === "ollama" ? 1 : EMBEDDING_INDEX_CONCURRENCY;
+  return params.providerId === "ollama" || params.providerId === "gemini"
+    ? 1
+    : EMBEDDING_INDEX_CONCURRENCY;
 }
 
 async function runEmbeddingOperationWithTimeout<T>(params: {
