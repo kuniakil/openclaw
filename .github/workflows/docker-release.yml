@@ -155,7 +155,8 @@ jobs:
             images+=("${DOCKERHUB_IMAGE}")
           fi
           browser_supported=0
-          if grep -q '^ARG OPENCLAW_INSTALL_BROWSER' Dockerfile; then
+          # Browser image build disabled: Camofox handles all browser automation externally.
+          if false && grep -q '^ARG OPENCLAW_INSTALL_BROWSER' Dockerfile; then
             browser_supported=1
           fi
           if [[ "${SOURCE_REF}" == refs/tags/v* ]]; then
@@ -300,7 +301,8 @@ jobs:
             images+=("${DOCKERHUB_IMAGE}")
           fi
           browser_supported=0
-          if grep -q '^ARG OPENCLAW_INSTALL_BROWSER' Dockerfile; then
+          # Browser image build disabled: Camofox handles all browser automation externally.
+          if false && grep -q '^ARG OPENCLAW_INSTALL_BROWSER' Dockerfile; then
             browser_supported=1
           fi
           if [[ "${SOURCE_REF}" == refs/tags/v* ]]; then
@@ -438,7 +440,8 @@ jobs:
           dockerhub_slim_tags=()
           dockerhub_browser_tags=()
           browser_supported=0
-          if grep -q '^ARG OPENCLAW_INSTALL_BROWSER' Dockerfile; then
+          # Browser image build disabled: Camofox handles all browser automation externally.
+          if false && grep -q '^ARG OPENCLAW_INSTALL_BROWSER' Dockerfile; then
             browser_supported=1
           fi
           if [[ "${SOURCE_REF}" == refs/tags/v* ]]; then
@@ -593,13 +596,14 @@ jobs:
           dockerhub_amd64_refs=()
           dockerhub_arm64_refs=()
           browser_supported=0
-          if [[ "${SOURCE_REF}" == refs/tags/v* ]]; then
+          # Browser image build disabled: Camofox handles all browser automation externally.
+          if false && [[ "${SOURCE_REF}" == refs/tags/v* ]]; then
             tag="${SOURCE_REF#refs/tags/}"
             git fetch --depth=1 origin "refs/tags/${tag}:refs/tags/${tag}"
             if git show "${SOURCE_REF}:Dockerfile" | grep -q '^ARG OPENCLAW_INSTALL_BROWSER'; then
               browser_supported=1
             fi
-          elif grep -q '^ARG OPENCLAW_INSTALL_BROWSER' Dockerfile; then
+          elif false && grep -q '^ARG OPENCLAW_INSTALL_BROWSER' Dockerfile; then
             browser_supported=1
           fi
           if [[ "${SOURCE_REF}" == refs/tags/v* ]]; then
