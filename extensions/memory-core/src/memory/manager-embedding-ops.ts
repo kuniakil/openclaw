@@ -74,9 +74,10 @@ const EMBEDDING_CACHE_TABLE = MEMORY_EMBEDDING_CACHE_TABLE;
 const EMBEDDING_CACHE_PRUNE_BATCH_SIZE = 100;
 const EMBEDDING_BATCH_MAX_TOKENS = 8000;
 const EMBEDDING_INDEX_CONCURRENCY = 4;
-const EMBEDDING_RETRY_MAX_ATTEMPTS = 3;
-const EMBEDDING_RETRY_BASE_DELAY_MS = 500;
-const EMBEDDING_RETRY_MAX_DELAY_MS = 8000;
+// Custom: Tuned for Gemini Free Tier 15 RPM (port from v2026.8.2 patch 59397e3275a)
+const EMBEDDING_RETRY_MAX_ATTEMPTS = 5;
+const EMBEDDING_RETRY_BASE_DELAY_MS = 4000;
+const EMBEDDING_RETRY_MAX_DELAY_MS = 30000;
 const EMBEDDING_QUERY_TIMEOUT_REMOTE_MS = 60_000;
 const EMBEDDING_QUERY_TIMEOUT_LOCAL_MS = 5 * 60_000;
 const EMBEDDING_BATCH_TIMEOUT_REMOTE_MS = 2 * 60_000;
@@ -182,7 +183,9 @@ function resolveMemoryIndexConcurrency(params: {
   if (typeof configured === "number" && Number.isFinite(configured)) {
     return Math.max(1, Math.floor(configured));
   }
-  return params.providerId === "ollama" ? 1 : EMBEDDING_INDEX_CONCURRENCY;
+  return params.providerId === "ollama" || params.providerId === "gemini"
+    ? 1
+    : EMBEDDING_INDEX_CONCURRENCY;
 }
 
 async function runEmbeddingOperationWithTimeout<T>(params: {

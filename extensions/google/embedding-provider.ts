@@ -214,40 +214,62 @@ export function sanitizeGeminiEmbedding(values: number[], expectedDimensions?: n
   return sanitizeAndNormalizeEmbedding(values);
 }
 
+// Custom: Chained promise mutex queue for Gemini Free Tier 15 RPM limit
+let geminiEmbeddingQueue: Promise<unknown> = Promise.resolve();
+const MIN_GEMINI_EMBEDDING_INTERVAL_MS = 4200; // ~14 requests/min maximum to respect Gemini Free Tier 15 RPM limit
+
 async function fetchGeminiEmbeddingPayload(params: {
   client: GeminiEmbeddingClient;
   endpoint: string;
   body: unknown;
   signal?: AbortSignal;
 }): Promise<Record<string, unknown>> {
-  return await executeWithApiKeyRotation({
-    provider: "google",
-    apiKeys: params.client.apiKeys,
-    transientRetry: providerOperationRetryConfig("read"),
-    execute: async (apiKey) => {
-      const authHeaders = parseGeminiAuth(apiKey);
-      const headers = {
-        ...authHeaders.headers,
-        ...params.client.headers,
-      };
-      return await withRemoteHttpResponse({
-        url: params.endpoint,
-        ssrfPolicy: params.client.ssrfPolicy,
+  const executePaced = async (): Promise<Record<string, unknown>> => {
+    return await executeWithApiKeyRotation({
+      provider: "google",
+      apiKeys: params.client.apiKeys,
+      transientRetry: {
+        attempts: 5,
+        baseDelayMs: 8000,
+        maxDelayMs: 30000,
         signal: params.signal,
-        init: {
-          method: "POST",
-          headers,
-          body: JSON.stringify(params.body),
-        },
-        onResponse: async (res) => {
-          if (!res.ok) {
-            throw await createProviderHttpError(res, "gemini embeddings failed");
-          }
-          return await readProviderJsonObjectResponse(res, "gemini embeddings failed");
-        },
-      });
-    },
+      },
+      execute: async (apiKey) => {
+        const authHeaders = parseGeminiAuth(apiKey);
+        const headers = {
+          ...authHeaders.headers,
+          ...params.client.headers,
+        };
+        return await withRemoteHttpResponse({
+          url: params.endpoint,
+          ssrfPolicy: params.client.ssrfPolicy,
+          signal: params.signal,
+          init: {
+            method: "POST",
+            headers,
+            body: JSON.stringify(params.body),
+          },
+          onResponse: async (res) => {
+            if (!res.ok) {
+              throw await createProviderHttpError(res, "gemini embeddings failed");
+            }
+            return await readProviderJsonObjectResponse(res, "gemini embeddings failed");
+          },
+        });
+      },
+    });
+  };
+
+  // Chain request sequentially through geminiEmbeddingQueue with mandatory cooldown
+  const currentTask = geminiEmbeddingQueue.then(async () => {
+    const result = await executePaced();
+    await new Promise((resolve) => setTimeout(resolve, MIN_GEMINI_EMBEDDING_INTERVAL_MS));
+    return result;
   });
+
+  // Catch rejection on queue pointer to avoid unhandled rejections blocking subsequent requests
+  geminiEmbeddingQueue = currentTask.catch(() => {});
+  return await currentTask;
 }
 
 function normalizeGeminiBaseUrl(raw: string): string {
