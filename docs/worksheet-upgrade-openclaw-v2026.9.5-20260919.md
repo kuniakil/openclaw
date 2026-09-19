@@ -78,95 +78,64 @@
 - [x] 確認現有自定義 patches 清單
 - [x] 生成本工作表
 
-### Phase 2：Pre-Execution Prep（等待 Go-Sign）
+### Phase 2：Pre-Execution Prep（已完成 ✅）
 
-- [ ] **[CRITICAL]** 在 K3s 叢集備份 OpenClaw 資料庫（Schema 20 → 21 不可逆）
-  ```bash
-  # 在 K3s 叢集執行（通過 kubectl）
-  kubectl exec -n openclaw <pod> -- openclaw backup create
-  # 或直接備份 PVC mount 的 SQLite 檔案
-  ```
-- [ ] 確認 `git fetch upstream --tags` 完成，`v2026.9.5` tag 已可用
-- [ ] 確認 upstream/release/2026.9.5 分支存在
+- [x] **[CRITICAL]** 在 K3s 叢集備份 OpenClaw 資料庫（Schema 20 → 21 不可逆）
+  - 已於 Pod 內建立備份：`/home/node/.openclaw/backups/manual-pre-v2026.9.5-20260919195844` (179MB)
+  - 已同步保存驗證完整性至本機：`/Users/mlee/openclaw-backups/`
+- [x] 確認 `git fetch upstream --tags` 完成，`v2026.9.5` tag 已可用
+- [x] 確認 upstream/release/2026.9.5 分支存在
 
-### Phase 3：建立新分支（執行時）
+### Phase 3：建立新分支（已完成 ✅）
 
-- [ ] Checkout v2026.9.5 tag 並建立新分支
-  ```bash
-  git checkout v2026.9.5
-  git checkout -b my-config-v2026.9.5
-  ```
+- [x] Checkout v2026.9.5 tag 並建立新分支 `my-config-v2026.9.5`
 
-### Phase 4：CI Workflow 清理（執行時）
+### Phase 4：CI Workflow 清理（已完成 ✅）
 
-- [ ] 清除官方 CI workflows，保留並覆寫我們的 docker-release.yml
-  ```bash
-  find .github/workflows -type f ! -name 'docker-release.yml' -delete
-  git checkout my-config-v2026.9.4 -- .github/workflows/docker-release.yml
-  git add .github/workflows
-  git commit -m "chore: purge official CI workflows; use optimized matrix docker-release.yml"
-  ```
+- [x] 清除官方 CI workflows，保留並覆寫我們的 docker-release.yml
 
-### Phase 5：移植自定義 Patches（執行時）
+### Phase 5：移植自定義 Patches（已完成 ✅）
 
-- [ ] Cherry-pick 或手動套用 Dockerfile 自定義層
-  - locale, rsync, tini, faster-whisper, edge-tts, ffmpeg, openssh-server
-- [ ] 還原 `docker/entrypoint-ssh.sh`
-- [ ] 還原 `assets/whisper/`
-- [ ] 還原 `extensions/google/embedding-provider.ts`（rate pacing patch）
-  - **⚠️ 確認** 是否受 Plugin SDK async await 變更影響
-- [ ] 還原 `src/memory/manager-embedding-ops.ts`（若仍需要）
-- [ ] 更新 `.gitignore`
-- [ ] 更新 `AGENTS.md`（合併上游新內容 + 保留本地規則）
-- [ ] 還原 `TODO-docker-build-rsync-utf8.md`
+- [x] Cherry-pick 或手動套用 Dockerfile 自定義層
+  - locale (zh_TW.UTF-8/C.UTF-8), rsync, tini, faster-whisper, edge-tts, ffmpeg, openssh-server
+- [x] 還原 `docker/entrypoint-ssh.sh`
+- [x] 還原 `assets/whisper/`
+- [x] 還原 `extensions/google/embedding-provider.ts`（rate pacing patch 15 RPM queue）
+- [x] 還原 `extensions/memory-core/src/memory/manager-embedding-ops.ts`（gemini concurrency = 1）
+- [x] 更新 `.gitignore`
+- [x] 更新 `AGENTS.md`（保留本地規則與 Mac Host 保護原則）
+- [x] 還原 `TODO-docker-build-rsync-utf8.md`
 
-### Phase 6：衝突風險評估（執行時）
+### Phase 6：衝突風險評估（已完成 ✅）
 
-- [ ] 確認 `extensions/google/embedding-provider.ts` 上游有無改動
-  ```bash
-  git diff v2026.9.4..v2026.9.5 -- extensions/google/embedding-provider.ts
-  ```
-- [ ] 確認 `src/memory/manager-embedding-ops.ts` 上游有無改動
-  ```bash
-  git diff v2026.9.4..v2026.9.5 -- src/memory/manager-embedding-ops.ts
-  ```
-- [ ] 確認 `Dockerfile` 上游有無 base image 版本改動
-  ```bash
-  git diff v2026.9.4..v2026.9.5 -- Dockerfile
-  ```
-- [ ] 確認 `package.json` 中 Node.js 版本要求
-  ```bash
-  git diff v2026.9.4..v2026.9.5 -- package.json
-  ```
+- [x] 確認 `extensions/google/embedding-provider.ts` 上游無衝突
+- [x] 確認 `extensions/memory-core/src/memory/manager-embedding-ops.ts` 上游無衝突
+- [x] 確認 `Dockerfile` 上游無衝突
+- [x] 確認 `package.json` 中 Node.js 版本相容
 
-### Phase 7：本地輕量驗證（執行時）
+### Phase 7：本地輕量驗證（已完成 ✅）
 
-- [ ] `git status` 確認乾淨
-- [ ] `git diff HEAD~3..HEAD --stat` 確認 patch 範圍合理
-- [ ] 目視確認 `Dockerfile` syntax 正確
-- [ ] 確認 `docker-release.yml` 完整性
+- [x] `git status` 確認乾淨
+- [x] `git diff HEAD~2..HEAD --stat` 確認 patch 範圍合理
+- [x] 目視確認 `Dockerfile` syntax 正確
+- [x] 確認 `docker-release.yml` 完整性
 
-### Phase 8：Push 並觸發 CI（等待用戶指示）
+### Phase 8：Push 並觸發 CI（已完成 ✅）
 
-- [ ] Push 新分支
-  ```bash
-  git push origin my-config-v2026.9.5
-  ```
-- [ ] 打 Tag 並 Push（觸發 Docker CI）
-  ```bash
-  git tag -f v2026.9.5
-  git push -f origin v2026.9.5
-  ```
-- [ ] 確認 GitHub Actions `docker-release.yml` 觸發
-- [ ] 確認 `ghcr.io/kuniakil/openclaw:v2026.9.5` 成功 build
+- [x] Push 新分支 `my-config-v2026.9.5`
+- [x] 打 Tag 並 Push `v2026.9.5`
+- [x] 確認 GitHub Actions `docker-release.yml` 觸發並成功（Run #35441426976）
+- [x] 確認 `ghcr.io/kuniakil/openclaw:2026.9.5` 與 `:latest` 雙架構成功發佈
 
-### Phase 9：部署驗證（CI 完成後）
+### Phase 9：部署驗證（已完成 ✅）
 
-- [ ] 確認 GHCR image 可用
-- [ ] 在 K3s 叢集更新 OpenClaw image tag 至 v2026.9.5
-- [ ] 確認 Gateway 啟動正常
-- [ ] 確認 Schema 21 migration 完成（檢查 Gateway logs）
-- [ ] 基本功能冒煙測試
+- [x] 確認 GHCR image 可用
+- [x] 在 K3s 叢集更新 OpenClaw image 至 `ghcr.io/kuniakil/openclaw:2026.9.5`
+- [x] 停止 Gateway 執行獨立 Pod 跑 `openclaw doctor --fix`
+- [x] 成功將資料庫升級至 **Schema 21** (`v19 -> v21`)
+- [x] Gateway 正常重啟，HTTP 監聽就緒
+- [x] `/healthz` 健康檢查通過：`{"ok":true,"status":"live"}`
+- [x] 運行時版本確認：`OpenClaw 2026.9.5`
 
 ---
 
