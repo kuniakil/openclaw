@@ -260,77 +260,94 @@ export function sanitizeGeminiEmbedding(values: number[], expectedDimensions?: n
   return sanitizeAndNormalizeEmbedding(values);
 }
 
+// Custom: Chained promise mutex queue for Gemini Free Tier 15 RPM limit
+let geminiEmbeddingQueue: Promise<unknown> = Promise.resolve();
+const MIN_GEMINI_EMBEDDING_INTERVAL_MS = 4200; // ~14 requests/min maximum to respect Gemini Free Tier 15 RPM limit
+
 async function fetchGeminiEmbeddingPayload(params: {
   client: GeminiEmbeddingClient;
   endpoint: string;
   body: unknown;
   signal?: AbortSignal;
 }): Promise<Record<string, unknown>> {
-  return await executeWithApiKeyRotation({
-    provider: "google",
-    apiKeys: params.client.apiKeys,
-    transientRetry: providerOperationRetryConfig("read"),
-    execute: async (apiKey) => {
-      const authHeaders = parseGeminiAuth(apiKey);
-      const headers = {
-        ...authHeaders.headers,
-        ...params.client.headers,
-      };
-      return await withRemoteHttpResponse({
-        url: params.endpoint,
-        ssrfPolicy: params.client.ssrfPolicy,
-        signal: params.signal,
-        init: {
-          method: "POST",
-          headers,
-          body: JSON.stringify(params.body),
-        },
-        onResponse: async (res) => {
-          if (!res.ok) {
-            // Clone before createProviderHttpError consumes the body: core truncates
-            // ProviderHttpError.errorBody to 500 chars, which regularly cuts off the
-            // RetryInfo detail near the end of real (~1KB+) Gemini 429 bodies.
-            let errorBodyClone: Response | undefined;
-            try {
-              errorBodyClone = res.clone();
-            } catch {
-              errorBodyClone = undefined;
-            }
-            try {
-              const error = await createProviderHttpError(res, "gemini embeddings failed", {
-                requestHeaders: headers,
-                signal: params.signal,
-              });
-              let retryInfoSource: unknown = error.errorBody;
-              if (errorBodyClone) {
-                try {
-                  retryInfoSource = await readProviderResponseErrorText(
-                    errorBodyClone,
-                    GOOGLE_RETRY_INFO_BODY_LIMIT_BYTES,
-                    headers,
-                    params.signal,
-                  );
-                } catch {
-                  params.signal?.throwIfAborted();
-                  retryInfoSource = error.errorBody;
+  const executePaced = async (): Promise<Record<string, unknown>> => {
+    return await executeWithApiKeyRotation({
+      provider: "google",
+      apiKeys: params.client.apiKeys,
+      transientRetry: providerOperationRetryConfig("read"),
+      execute: async (apiKey) => {
+        const authHeaders = parseGeminiAuth(apiKey);
+        const headers = {
+          ...authHeaders.headers,
+          ...params.client.headers,
+        };
+        return await withRemoteHttpResponse({
+          url: params.endpoint,
+          ssrfPolicy: params.client.ssrfPolicy,
+          signal: params.signal,
+          init: {
+            method: "POST",
+            headers,
+            body: JSON.stringify(params.body),
+          },
+          onResponse: async (res) => {
+            if (!res.ok) {
+              // Clone before createProviderHttpError consumes the body: core truncates
+              // ProviderHttpError.errorBody to 500 chars, which regularly cuts off the
+              // RetryInfo detail near the end of real (~1KB+) Gemini 429 bodies.
+              let errorBodyClone: Response | undefined;
+              try {
+                errorBodyClone = res.clone();
+              } catch {
+                errorBodyClone = undefined;
+              }
+              try {
+                const error = await createProviderHttpError(res, "gemini embeddings failed", {
+                  requestHeaders: headers,
+                  signal: params.signal,
+                });
+                let retryInfoSource: unknown = error.errorBody;
+                if (errorBodyClone) {
+                  try {
+                    retryInfoSource = await readProviderResponseErrorText(
+                      errorBodyClone,
+                      GOOGLE_RETRY_INFO_BODY_LIMIT_BYTES,
+                      headers,
+                      params.signal,
+                    );
+                  } catch {
+                    params.signal?.throwIfAborted();
+                    retryInfoSource = error.errorBody;
+                  }
                 }
+                params.signal?.throwIfAborted();
+                const retryAfterMs = extractGoogleRetryInfoDelayMs(retryInfoSource);
+                if (retryAfterMs !== undefined) {
+                  error.retryAfterMs = Math.max(retryAfterMs, error.retryAfterMs ?? 0);
+                }
+                throw error;
+              } finally {
+                // An early exit while reading the original must also release its tee.
+                void errorBodyClone?.body?.cancel().catch(() => undefined);
               }
-              params.signal?.throwIfAborted();
-              const retryAfterMs = extractGoogleRetryInfoDelayMs(retryInfoSource);
-              if (retryAfterMs !== undefined) {
-                error.retryAfterMs = Math.max(retryAfterMs, error.retryAfterMs ?? 0);
-              }
-              throw error;
-            } finally {
-              // An early exit while reading the original must also release its tee.
-              void errorBodyClone?.body?.cancel().catch(() => undefined);
             }
-          }
-          return await readProviderJsonObjectResponse(res, "gemini embeddings failed");
-        },
-      });
-    },
+            return await readProviderJsonObjectResponse(res, "gemini embeddings failed");
+          },
+        });
+      },
+    });
+  };
+
+  // Chain request sequentially through geminiEmbeddingQueue with mandatory cooldown
+  const currentTask = geminiEmbeddingQueue.then(async () => {
+    const result = await executePaced();
+    await new Promise((resolve) => setTimeout(resolve, MIN_GEMINI_EMBEDDING_INTERVAL_MS));
+    return result;
   });
+
+  // Catch rejection on queue pointer to avoid unhandled rejections blocking subsequent requests
+  geminiEmbeddingQueue = currentTask.catch(() => {});
+  return await currentTask;
 }
 
 function normalizeGeminiBaseUrl(raw: string): string {
