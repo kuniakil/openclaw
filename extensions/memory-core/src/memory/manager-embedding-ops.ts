@@ -524,7 +524,7 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingCa
     const provider = this.syncProviderGeneration
       ? this.syncProviderGeneration.provider
       : this.provider;
-    return provider?.id === "ollama" ? 1 : EMBEDDING_INDEX_CONCURRENCY;
+    return provider?.id === "ollama" || provider?.id === "gemini" ? 1 : EMBEDDING_INDEX_CONCURRENCY;
   }
 
   private async writeChunks(
