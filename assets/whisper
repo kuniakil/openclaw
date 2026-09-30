@@ -1,0 +1,41 @@
+#!/bin/bash
+# OpenClaw audio STT CLI wrapper (smart + lazy install).
+
+set -e
+
+# Pre-installed faster-whisper fallback (pre-baked in Docker image)
+# Lazy install fallback only if missing (for non-Docker or bare-metal custom setups)
+if [ ! -d "/home/node/.openclaw/whisper-lib" ] || \
+   ! /usr/bin/python3 -c "import sys; sys.path.insert(0,'/home/node/.openclaw/whisper-lib'); import faster_whisper" 2>/dev/null; then
+    echo "[whisper] lazy-installing faster-whisper to hostpath..." >&2
+    mkdir -p /home/node/.openclaw
+    curl -sSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py
+    /usr/bin/python3 /tmp/get-pip.py --break-system-packages --target=/home/node/.openclaw/whisper-pip
+    PYTHONPATH=/home/node/.openclaw/whisper-pip \
+        /usr/bin/python3 -m pip install --break-system-packages \
+        --target=/home/node/.openclaw/whisper-lib faster-whisper
+fi
+
+# Wire Python path
+export PYTHONPATH="/home/node/.openclaw/whisper-lib:/home/node/.openclaw/whisper-pip:/home/node/.openclaw/edge-tts-lib${PYTHONPATH:+:$PYTHONPATH}"
+
+# Strip --model flag (use base int8 hard-coded in whisper-cli.py)
+ARGS=()
+SKIP_NEXT=0
+for arg in "$@"; do
+    if [ "$SKIP_NEXT" = "1" ]; then SKIP_NEXT=0; continue; fi
+    case "$arg" in
+        --model) SKIP_NEXT=1 ;;
+        --model=*) ;;
+        *) ARGS+=("$arg") ;;
+    esac
+done
+
+# Add --language zh if not specified
+HAS_LANG=0
+for arg in "${ARGS[@]}"; do
+    case "$arg" in --language|--language=*) HAS_LANG=1 ;; esac
+done
+[ "$HAS_LANG" = "0" ] && ARGS=(--language zh "${ARGS[@]}")
+
+exec /usr/bin/python3 /home/node/.openclaw/bin/whisper-cli.py "${ARGS[@]}"
