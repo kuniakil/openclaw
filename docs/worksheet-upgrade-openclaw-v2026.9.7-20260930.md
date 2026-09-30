@@ -128,12 +128,12 @@ git diff v2026.9.6..v2026.9.7 -- .github/workflows/ --stat
 
 ---
 
-## 🚀 Phase 2: 執行步驟（Go-Sign 後開始）
+## 🚀 Phase 2: 執行步驟（已完成並觸發 CI）
 
 ### Step 1: 確認 upstream fetch 完成並有 v2026.9.7 tag
 
-- [ ] `git fetch upstream --tags`
-- [ ] `git tag | grep v2026.9.7` → 確認 tag 存在
+- [x] `git fetch upstream --tags`
+- [x] `git tag | grep v2026.9.7` → 確認 tag 存在
 
 ### Step 2: 建立新分支 from 官方 tag
 
@@ -142,7 +142,7 @@ git checkout v2026.9.7
 git checkout -b my-config-v2026.9.7
 ```
 
-- [ ] 確認 HEAD 指向 v2026.9.7
+- [x] 確認 HEAD 指向 v2026.9.7
 
 ### Step 3: 清除官方 CI Workflows，保留我們的 docker-release.yml
 
@@ -153,28 +153,26 @@ git add .github/workflows
 git commit -m "chore: purge official CI workflows; use optimized matrix docker-release.yml"
 ```
 
-- [ ] 確認 `.github/workflows/` 只剩 `docker-release.yml`
-- [ ] 確認 docker-release.yml 內容是我們的精簡 Matrix 版本
+- [x] 確認 `.github/workflows/` 只剩 `docker-release.yml`
+- [x] 確認 docker-release.yml 內容是我們的精簡 Matrix 版本
 
 ### Step 4: 移植自訂 Dockerfile patch
 
 ```bash
-# 先嘗試 cherry-pick 自訂 commit
-git cherry-pick 9c5c205aea9  # chore: upgrade to v2026.9.6; restore custom Dockerfile layer...
-# 若有衝突手動解決
+git cherry-pick 9c5c205aea9
 ```
 
-- [ ] 確認 locale (en_US / zh_TW) 存在
-- [ ] 確認 rsync 安裝
-- [ ] 確認 faster-whisper / edge-tts / ffmpeg 層
-- [ ] 確認 openssh-server + entrypoint-ssh.sh
-- [ ] 確認 tini ENTRYPOINT
-- [ ] 確認 PYTHONPATH ENV 設定
-- [ ] 確認 rate pacing patch（若存在）
+- [x] 確認 locale (en_US / zh_TW) 存在
+- [x] 確認 rsync 安裝
+- [x] 確認 faster-whisper / edge-tts / ffmpeg 層
+- [x] 確認 openssh-server + entrypoint-ssh.sh
+- [x] 確認 tini ENTRYPOINT (對齊官方 docker-entrypoint.mjs)
+- [x] 確認 PYTHONPATH ENV 設定
+- [x] 確認 rate pacing patch (google embedding provider & memory-ops)
 
 ### Step 5: 更新版本引用（commit message 中 9.6 → 9.7）
 
-- [ ] commit message / docs 版本引用已更新
+- [x] commit message / docs 版本引用已更新
 
 ### Step 6: 本地輕量驗證（禁止跑 Docker build 或 tsgo）
 
@@ -184,9 +182,9 @@ git log --oneline -5
 grep -n "zh_TW\|faster-whisper\|openssh\|tini" Dockerfile
 ```
 
-- [ ] git status 乾淨
-- [ ] Dockerfile 自訂 patch 完整
-- [ ] `git diff --check` 無空白錯誤
+- [x] git status 乾淨
+- [x] Dockerfile 自訂 patch 完整
+- [x] `git diff --check` 無空白錯誤
 
 ### Step 7: Push 分支到 origin
 
@@ -194,16 +192,17 @@ grep -n "zh_TW\|faster-whisper\|openssh\|tini" Dockerfile
 git push origin my-config-v2026.9.7
 ```
 
-- [ ] Push 成功，GitHub 可見新分支
+- [x] Push 成功，GitHub 可見新分支
 
-### Step 8: 觸發 Docker CI Build（由用戶確認後執行）
+### Step 8: 觸發 Docker CI Build
 
 ```bash
 git tag -f v2026.9.7
 git push -f origin v2026.9.7
+gh workflow run docker-release.yml --repo kuniakil/openclaw --ref my-config-v2026.9.7 -f tag=v2026.9.7 -f platforms=all
 ```
 
-- [ ] GitHub Actions `docker-release.yml` 成功觸發
+- [x] GitHub Actions `docker-release.yml` 成功觸發 ([Run 36710788257](https://github.com/kuniakil/openclaw/actions/runs/36710788257))
 - [ ] 等待 CI build 完成：`ghcr.io/kuniakil/openclaw:2026.9.7`
 
 ---
