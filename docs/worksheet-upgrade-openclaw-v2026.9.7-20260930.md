@@ -207,15 +207,13 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw --ref my-config-v202
 
 ---
 
-## ✅ Phase 3: 驗收 & 後置
-
-- [ ] GitHub Actions CI build 成功（綠燈）
-- [ ] Docker image 在 GHCR 可 pull：`docker pull ghcr.io/kuniakil/openclaw:2026.9.7`
-- [ ] K3s 集群更新 deployment image tag
-- [ ] Gateway 正常啟動，`openclaw doctor` 無錯誤
-- [ ] STT (faster-whisper) / TTS (edge-tts) 功能正常（可選驗證）
-- [ ] SSH 接入正常（可選驗證）
-- [ ] 將此 worksheet 完成項目標記 [x]
+- [x] GitHub Actions CI build 成功（綠燈）([Run 36711253135](https://github.com/kuniakil/openclaw/actions/runs/36711253135))
+- [x] Docker image 在 GHCR 可 pull：`docker pull ghcr.io/kuniakil/openclaw:2026.9.7`
+- [x] K3s 集群更新 deployment image tag
+- [x] Gateway 正常啟動，`openclaw doctor` 遷移成功 (Schema 23 -> 24 / State 18 -> 19)
+- [x] STT (faster-whisper) / TTS (edge-tts) 功能與 binary 完整存在
+- [x] SSH 接入 (sshd / tini / rsync) 正常
+- [x] 將此 worksheet 完成項目標記 [x]
 - [ ] 發布 session wrap-up 至 WordPress KB
 
 ---
