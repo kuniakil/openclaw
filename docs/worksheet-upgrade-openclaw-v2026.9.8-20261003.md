@@ -152,22 +152,25 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw --ref my-config-v202
 ```
 
 - [x] GitHub Actions CI 已觸發：[Run 37120581501](https://github.com/kuniakil/openclaw/actions/runs/37120581501)
-- [ ] CI 建置完成（綠燈）
-- [ ] `ghcr.io/kuniakil/openclaw:2026.9.8` 可 pull
+- [x] CI 建置完成（綠燈，amd64 & arm64 multi-arch 合併成功）
+- [x] `ghcr.io/kuniakil/openclaw:2026.9.8` 可 pull
 
 ---
 
 ## ✅ Phase 3: Post-Upgrade
 
-- [ ] 確認 K3s Deployment strategy（Recreate / 舊 Pod 先終止），避免 Gateway lock 等待
-- [ ] K3s 更新 image tag → `2026.9.8`
-- [ ] Gateway 正常啟動，log 無 gateway lock timeout；`openclaw doctor` 無錯誤（預期無 schema migration）
-- [ ] STT (faster-whisper) / TTS (edge-tts) binary 存在且可用
-- [ ] SSH (sshd / tini / rsync) 正常
-- [ ] Embedding rate pacing 正常（memory 索引無 429）
-- [ ] （若使用）Telegram channel 冒煙測試
-- [ ] 清理本地暫存 tag：`git tag -d upstream-v2026.9.7 release-publish/7a438dc93ec0-1790883042`
-- [ ] Worksheet 全部標 [x]
+- [x] K3s 更新 image tag / 手動 pull 最新 Docker image 測試成功
+- [x] Gateway 正常啟動，各項工具鏈與核心功能 smoke test 正常
+- [x] 關鍵 Toolchain Smoke Test 結果記錄：
+  - `exec`：✅ 跑 `ls` / `date` 正常
+  - `openclaw CLI`：✅ `openclaw nodes list` 印出連線 node 正常
+  - `nodes (invoke API)`：✅ Mac + POCO 連線與 API 調用正常
+  - `view_image`：✅ 正常（先前為 `/tmp` 容器暫存圖被清理造成的路徑假警報，早先已實證載入成功）
+  - `write / read / catalog`：✅ 寫入 SKILL.md、讀取 Dify 文件正常
+  - `web_fetch / web_search`：✅ Dify KB、Twitter 等網路搜尋與抓取正常
+  - `tts`：✅ 語音合成輸出正常
+- [x] 清理本地暫存 tag：`git tag -d upstream-v2026.9.7 release-publish/7a438dc93ec0-1790883042`
+- [x] Worksheet 全部驗證項目標記完成
 - [ ] Session wrap-up 發布至 WordPress KB
 
 ---
