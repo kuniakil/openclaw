@@ -151,7 +151,8 @@ git push -f origin v2026.9.8
 gh workflow run docker-release.yml --repo kuniakil/openclaw --ref my-config-v2026.9.8 -f tag=v2026.9.8 -f platforms=all
 ```
 
-- [ ] CI 綠燈
+- [x] GitHub Actions CI 已觸發：[Run 37120581501](https://github.com/kuniakil/openclaw/actions/runs/37120581501)
+- [ ] CI 建置完成（綠燈）
 - [ ] `ghcr.io/kuniakil/openclaw:2026.9.8` 可 pull
 
 ---
