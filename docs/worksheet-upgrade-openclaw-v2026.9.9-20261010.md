@@ -146,7 +146,7 @@ git commit -m "docs: add v2026.9.9 upgrade worksheet"
 git push origin my-config-v2026.9.9
 ```
 
-- [ ] Push 成功
+- [x] Push 成功
 
 ### Step 7: 觸發 Docker CI Build（再次確認）
 
@@ -156,7 +156,7 @@ git push -f origin v2026.9.9
 gh workflow run docker-release.yml --repo kuniakil/openclaw --ref my-config-v2026.9.9 -f tag=v2026.9.9 -f platforms=all
 ```
 
-- [ ] CI 觸發（Run ID：____）
+- [x] CI 觸發：[Run 38007217524](https://github.com/kuniakil/openclaw/actions/runs/38007217524)
 - [ ] 建置綠燈（amd64 & arm64 merge）
 - [ ] `ghcr.io/kuniakil/openclaw:2026.9.9` 可 pull
 
