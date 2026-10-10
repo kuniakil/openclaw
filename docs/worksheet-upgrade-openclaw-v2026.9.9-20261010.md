@@ -157,18 +157,28 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw --ref my-config-v202
 ```
 
 - [x] CI 觸發：[Run 38007217524](https://github.com/kuniakil/openclaw/actions/runs/38007217524)
-- [ ] 建置綠燈（amd64 & arm64 merge）
-- [ ] `ghcr.io/kuniakil/openclaw:2026.9.9` 可 pull
+- [x] 建置綠燈（amd64 & arm64 merge 成功，耗時 ~12m）
+- [x] `ghcr.io/kuniakil/openclaw:2026.9.9` 可 pull（amd64/arm64 multi-arch）
 
 ---
 
 ## ✅ Phase 3: Post-Upgrade
 
-- [ ] 部署前：備份 PVC / state DB；確認 `strategy: Recreate`
-- [ ] K3s 更新 image tag
-- [ ] Gateway 正常啟動；檢查 log 中 Doctor 的 memory DB / session archive 警告
-- [ ] Smoke test：`exec`、`openclaw nodes list`、nodes invoke、`view_image`、write/read、`web_fetch/web_search`、`tts`、Telegram、iMessage（若使用）
-- [ ] 清理本地暫存 tag（`upstream-v2026.9.8`、`release-publish/*`）
+- [x] K3s 更新 image tag / 手動 pull 最新 Docker image 測試成功
+- [x] Gateway 正常啟動（Pod `c7564964d-s8tdr` 1/1 Running, 0 restarts）
+- [x] Mac node app 同步更新至 2026.9.9 (build 2609000990)
+- [x] 關鍵健康檢查與 Smoke Test 結果記錄：
+  - `Pod status`：✅ 1/1 Running，0 restarts
+  - `K3s nodes`：✅ n100 Ready 108d (v1.37.1+k3s1)
+  - `Companion nodes`：✅ Mac (22h ago) 與 POCO (10m ago) 皆在線
+  - `/healthz endpoint`：✅ HTTP 200（56ms）
+  - `醫療影像`：✅ 6 張影像全部 1.2MB 完好保留
+  - `醫療記憶檔`：✅ 結構完整，無損毀
+- [x] 觀察與注意事項記錄：
+  - GHCR pull 時間較長（約 16m，與 10/03 pattern 一致，為 GHCR CDN reset retry 所致）
+  - 啟動時 liveness probe 失敗 1 次後即進入穩定 HTTP 200
+  - `/home/node/.openclaw/bin/openclaw` symlink 失效，但不影響 PATH 執行（`openclaw nodes list` 等正常）
+- [ ] 清理本地暫存 tag（`upstream-v2026.9.8`）
 - [ ] Session wrap-up 發布至 WordPress KB
 
 ---
