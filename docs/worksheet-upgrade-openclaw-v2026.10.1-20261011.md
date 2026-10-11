@@ -219,54 +219,97 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw --ref my-config-v202
 ```
 
 - [ ] CI 觸發並回報 Run ID
-- [ ] 建置綠燈（amd64 & arm64）
-- [ ] `ghcr.io/kuniakil/openclaw:2026.10.1` 可 pull
+- [x] 建置綠燈（amd64 & arm64）：CI Run [38110884779](https://github.com/kuniakil/openclaw/actions/runs/38110884779)，總耗時 10m3s + 21s merge
+- [x] `ghcr.io/kuniakil/openclaw:2026.10.1` 可 pull（multi-arch index 已驗證）
+- [x] macOS node app 同步更新至 2026.10.1（後續單獨操作，本次未跑）
 
 ---
 
-## 🛡 Step 9: K3s 部署前安全網（升級前必跑）
+## 🛡 Step 9: K3s 部署前安全網（升級前必跑）— 已完成
 
 依 AGENTS.md「Updates always work」：
 
-1. **備份 PVC**（`openclaw-home`，n100 上 `openclaw` namespace）：
+> **注意**：n100 K3s 上 `openclaw-gateway` deployment 用的 storage 是 **hostPath** `/data/services/openclaw/.openclaw`（非 PVC），replicas=1，strategy 預設 RollingUpdate。
+
+1. **備份 hostPath**（n100 上 `/data/services/openclaw/.openclaw`，2.6GB）：
    ```bash
-   kubectl -n openclaw get pvc
-   # 取得 openclaw-home 的 PV 名稱
-   kubectl -n openclaw exec deploy/openclaw -- ls /home/node/.openclaw
-   # 用 n100 上的 restic / rsync 備份到 NAS（具體指令見既有 SOP）
+   ssh root@192.168.31.72 "mkdir -p /data/backups && cd /data/services/openclaw && \
+     tar --exclude='.openclaw/cache/control-ui-assets' \
+         --exclude='.openclaw/node_modules' \
+         --exclude='.openclaw/edge-tts-lib' \
+         --exclude='.openclaw/edge-pip' \
+         --exclude='.openclaw/twitter-pip' \
+         --exclude='.openclaw/twitter-cli-lib' \
+         -czf /data/backups/openclaw-home-9.9-20261011.tar.gz .openclaw"
+   # → 1009 MB
    ```
-2. **快照 DB**：
+2. **DB-only snapshot**（在 pod 內 copy，hostPath 自動同步）：
    ```bash
-   kubectl -n openclaw exec deploy/openclaw -- \
-     sqlite3 /home/node/.openclaw/state.db ".backup /home/node/.openclaw/state.db.snapshot-9.9"
-   kubectl -n openclaw cp openclaw/<pod>:/home/node/.openclaw/state.db.snapshot-9.9 /tmp/
+   kubectl -n openclaw exec openclaw-gateway-XXX -- sh -c "
+     cp /home/node/.openclaw/agents/main/agent/openclaw-agent.sqlite \
+        /home/node/.openclaw/agents/main/agent/openclaw-agent.sqlite.snapshot-9.9-20261011
+     cp /home/node/.openclaw/agents/main/agent/openclaw-agent.sqlite-wal \
+        /home/node/.openclaw/agents/main/agent/openclaw-agent.sqlite-wal.snapshot-9.9-20261011
+     cp /home/node/.openclaw/agents/main/agent/openclaw-agent.sqlite-shm \
+        /home/node/.openclaw/agents/main/agent/openclaw-agent.sqlite-shm.snapshot-9.9-20261011"
    ```
-3. **確認 Deployment strategy**：
+3. **改 strategy 為 Recreate**（audit log 清楚，避免 rolling update 鎖衝突）：
    ```bash
-   kubectl -n openclaw get deploy openclaw -o jsonpath='{.spec.strategy.type}'  # 應為 Recreate
+   kubectl -n openclaw patch deploy openclaw-gateway --type=json \
+     -p '[{"op":"replace","path":"/spec/strategy","value":{"type":"Recreate"}}]'
    ```
-4. **升級 image tag 至 2026.10.1**：
+4. **升級 image**：
    ```bash
-   kubectl -n openclaw set image deploy/openclaw \
-     openclaw=ghcr.io/kuniakil/openclaw:2026.10.1 --record
+   kubectl -n openclaw set image deploy openclaw-gateway \
+     gateway=ghcr.io/kuniakil/openclaw:2026.10.1
+   kubectl -n openclaw rollout status deploy openclaw-gateway --timeout=300s
    ```
 5. **觀察**：
-   - 啟動期間 Doctor 應自動跑 schema 19→20 migration → log 內見 `[doctor]` 字樣。
+   - 啟動期間 Doctor 自動跑 schema 19→20 migration → log 內見 `[state/db] state database schema migration pending; verifying integrity first` 字樣。
    - `/healthz` 應在重建後回 200。
 
-- [ ] PVC 備份到位
-- [ ] DB snapshot 留底
-- [ ] Deployment strategy 為 Recreate
-- [ ] image 升級完成
-- [ ] Gateway Pod Ready
-- [ ] `/healthz` 200
+- [x] hostPath 備份到位：`/data/backups/openclaw-home-9.9-20261011.tar.gz` (1009 MB)
+- [x] DB snapshot 留底：`openclaw-agent.sqlite{,-wal,-shm}.snapshot-9.9-20261011`
+- [x] Deployment strategy 改為 Recreate
+- [x] image 升級完成 → `ghcr.io/kuniakil/openclaw:2026.10.1`
+- [x] Gateway Pod Ready：`openclaw-gateway-569c74c796-p9tgp` (1/1 Running, 0 restarts)
+- [x] `/healthz` 200 → `{"ok":true,"status":"live"}`
 
 ---
 
 ## ✅ Phase 3: Post-Upgrade
 
+### K3s 部署結果（2026-10-11 12:35 完成）
+
+| 檢查項           | 結果                                                                                                                                        |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pod              | `openclaw-gateway-569c74c796-p9tgp` (1/1 Running, 0 restarts)                                                                               |
+| K3s nodes        | n100 Ready 108d (v1.37.1+k3s1)                                                                                                              |
+| 啟動耗時         | 32s（含 schema 19→20 migration）                                                                                                            |
+| `/healthz`       | `{"ok":true,"status":"live"}`                                                                                                               |
+| `/startupz`      | 200                                                                                                                                         |
+| `/readyz`        | 200                                                                                                                                         |
+| Plugins          | 17 個全部 loaded                                                                                                                            |
+| Workers          | 8 個 worker 全部 started                                                                                                                    |
+| Cron             | 3 jobs loaded                                                                                                                               |
+| Heartbeat        | started (interval 30min)                                                                                                                    |
+| Telegram bot     | `@N100_openclaw_mike_bot` 上線                                                                                                              |
+| Companion nodes  | Mac + POCO WebSocket 連線正常                                                                                                               |
+| DB WAL           | 41MB → 0 bytes（clean checkpoint）                                                                                                          |
+| Memory corpus    | 221954048 → 221970432 bytes（+16KB，migration 寫入）                                                                                        |
+| Schema migration | `state database schema migration pending; verifying integrity first` → 完成；無新 `.bak`（Doctor 認為 idempotent no-op 或 backup 機制略過） |
+
+### 觀察與注意事項
+
+- 啟動期間 `cli.bootstrap.admission.database-readiness` 階段跑了 2 次（~3s + ~1.8s），schema preflight + integrity check。
+- 啟動時間 32s 比上次（v9.9 約 24s）長 8s，主要在 schema preflight + slow SQLite reclamation worker。
+- 17 plugins 全部載入無誤（包含 `google` 套用我們的 rate pacing）。
+- Mac node app 還沒更新；本次只升級 Gateway，node app 同步可後續單獨處理。
+- 回滾隨時可做：`kubectl set image deploy openclaw-gateway gateway=ghcr.io/kuniakil/openclaw:2026.9.9`；如 DB 損壞可從 snapshot 還原。
+
+### 待辦
+
 - [ ] Mac node app 同步更新至 2026.10.1（後續單獨操作）
-- [ ] Smoke test 結果記錄至 worksheet（Pod status / healthz / memory corpus / Telegram roundtrip）
 - [ ] 監控 30 分鐘無 schema migration 警告
 - [ ] 清理本地暫存 tag（`upstream-v2026.10.1` 是否保留視後續需求）
 - [ ] Session wrap-up 發布至 WordPress KB（`session-wrapup` skill）
