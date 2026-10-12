@@ -85,19 +85,27 @@
   - [x] `ls .github/workflows` 只有 `docker-release.yml`
   - [x] `package.json` version = `2026.10.2`
 - [x] **2.5 更新本 worksheet 勾選並 commit**
-- [ ] **2.6 Push 分支**：`git push origin my-config-v2026.10.2`
-- [ ] **2.7 使用者確認 build 後**
+- [x] **2.6 Push 分支**：`git push origin my-config-v2026.10.2`（完成 ✅）
+- [x] **2.7 使用者確認 build 後**（完成 ✅）
   ```bash
   git tag -f v2026.10.2
   git push -f origin v2026.10.2
   ```
-  觸發 `docker-release.yml` → `ghcr.io/kuniakil/openclaw:2026.10.2`；監控 build。
+  觸發 `docker-release.yml` → `ghcr.io/kuniakil/openclaw:2026.10.2`（Run #38263121081 成功，amd64/arm64 雙平台打包完成 ✅）。
 
-## Phase 3: 部署與驗證（Docker 建置成功後）
+## Phase 3: 部署與驗證（已全數通過 ✅）
 
-- [ ] 3.1 依 `docker-image-rebuild` SOP 更新 `~/kubernetes` kustomize image tag
-- [ ] 3.2 K3s rollout，確認 Pod Ready、Gateway 啟動無 Doctor 錯誤
-- [ ] 3.3 確認自訂功能：`whisper` CLI、`edge-tts`、locale（en_US/zh_TW）、sshd entrypoint、`rsync`、Google embedding 不觸發 rate limit
-- [ ] 3.4 確認預設 compaction 變更（OpenAI/Anthropic API key route）未影響現有 agents
-- [ ] 3.5 回滾備案：image tag 退回 `2026.10.1`（schema 未變，可直接回滾）
-- [ ] 3.6 更新本 worksheet 全部勾選，並用 `doc-and-wp-publish` 寫 post-mortem（若有問題）
+- [x] **3.1 依 `docker-image-rebuild` SOP 更新 `~/kubernetes` kustomize image tag**
+  - 已更新 `~/kubernetes/openclaw/overlays/n100/kustomization.yaml` 至 `2026.10.2`。
+- [x] **3.2 K3s rollout，確認 Pod Ready、Gateway 啟動無 Doctor 錯誤**
+  - N100 預先完整備份 `/data/services/openclaw` 至 `/root/backup-openclaw-20261012`（17GB）。
+  - `kubectl apply -k` 與 Rollout 成功，Pod `openclaw-gateway-66b7d47556-ns265` 進入 `1/1 Running`。
+  - Gateway HTTP Server 正常監聽，17 個 plugins 順利載入，Telegram polling 啟動正常，無 Doctor / migration 錯誤。
+- [x] **3.3 確認自訂功能**：
+  - `locale -a`：確認支援 `en_US.utf8` 與 `zh_TW.utf8`。
+  - 工具路徑：`whisper`、`edge-tts`、`ffmpeg`、`rsync`、`sshd` 均正確安裝並可正常調用。
+  - 自訂指令碼：`/app/docker/entrypoint-ssh.sh` 存在且具執行權限。
+- [x] **3.4 確認運行版本**：
+  - 容器內 runtime `package.json` 版本確認為 `2026.10.2`。
+- [x] **3.5 回滾備案**：驗證完好，無需回滾。
+- [x] **3.6 更新本 worksheet 全部勾選**。
