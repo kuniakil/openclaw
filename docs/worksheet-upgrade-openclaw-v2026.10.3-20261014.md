@@ -219,40 +219,78 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 
 ---
 
-## Phase 3: 部署與驗證（待 Go-Sign）
+## Phase 3: 部署與驗證（已全數通過 ✅）
 
 ### 3.1 依 `docker-image-rebuild` SOP 更新 `~/kubernetes` kustomize image tag
 
-- [ ] 更新 `~/kubernetes/openclaw/overlays/n100/kustomization.yaml` 至 `2026.10.3`
-- [ ] `git -C ~/kubernetes diff --stat` 確認僅 kustomization.yaml 變更
+- [x] 更新 `~/kubernetes/openclaw/overlays/n100/kustomization.yaml`：`2026.10.2` → `2026.10.3`
+- [x] `git -C ~/kubernetes status -sb` 確認僅 `kustomization.yaml` 變更（乾淨的 `main` 上只有這一筆）
 
 ### 3.2 K3s rollout，確認 Pod Ready、Gateway 啟動無 Doctor 錯誤
 
-- [ ] **備份** `/data/services/openclaw` 至 `/root/backup-openclaw-20261014`（10.2 容器 + 資料大小約 17GB）
-- [ ] `kubectl apply -k ~/kubernetes/openclaw/overlays/n100`
-- [ ] `kubectl rollout status deployment/openclaw-gateway -n openclaw` 等待 Ready
-- [ ] 確認 plugins 數量: 17 個（與 10.2 一致，無新失敗）
-- [ ] 確認 Telegram polling 啟動無錯誤
+- [x] **備份** `/data/services/openclaw` → `/root/backup-openclaw-20261014`
+  - rsync 完成：17G / **148,732 檔案**（source 與 backup 檔案數、大小完全一致 ✅）
+- [x] `kubectl apply -k ~/kubernetes/openclaw/overlays/n100` → `successfully rolled out`
+- [x] 新 Pod：`openclaw-gateway-6655df6486-zsvbk`，`1/1 Running`，`RESTARTS 0`
+- [x] Deployment image 確認為 `ghcr.io/kuniakil/openclaw:2026.10.3`
+- [x] **17 個 plugins 全部載入**（anthropic, canvas, cua-computer, device-pair, file-transfer, geolocation, github, google, linux-node, memory-core, microsoft, ollama, openai, talk-voice, tavily, telegram, xai）
+- [x] Gateway `ready`，Telegram polling 啟動
 
-### 3.3 確認自訂功能（與 10.2 對齊）
+> [!NOTE]
+>
+> **啟動期間出現的瞬時警告（皆已自動恢復，非缺陷）**：
+>
+> 初次啟動時 agent DB 的 5 秒前景 startup budget 到期，出現：
+> `cron maintenance failed`、`memory-core: dreaming startup cleanup failed`、
+> `chat metadata refresh failed`、`[SECRETS_DEGRADED] cold route`。
+>
+> 系統按設計於背景完成準備後自行恢復：
+>
+> ```
+> 07:38:25 [state/agent-admission] agent database recovered after background inspection and preparation
+> ```
+>
+> 恢復後無任何新錯誤。屬於已知的冷啟動競態，非升級失敗，**不需手動執行 `openclaw doctor --fix`**。
 
-- [ ] `kubectl exec ... -- bash -c "locale -a"` 顯示 `en_US.utf8` / `zh_TW.utf8`
-- [ ] `which whisper`、`which edge-tts`、`which ffmpeg`、`which rsync`、`which sshd` 全部存在
-- [ ] `test -x /app/docker/entrypoint-ssh.sh` 通過
-- [ ] `python3 -c "import faster_whisper; print(faster_whisper.__version__)"` 顯示已安裝版本
-- [ ] `python3 -c "import edge_tts; print(edge_tts.__version__)"` 顯示已安裝版本
+### 3.3 確認自訂功能（與 10.2 對齊）— 全數通過 ✅
+
+- [x] `locale -a` 顯示 `C.utf8` / **`en_US.utf8`** / **`zh_TW.utf8`**
+- [x] `whisper` → `/usr/local/bin/whisper`
+- [x] `edge-tts` → `/usr/local/bin/edge-tts`
+- [x] `ffmpeg` → `/usr/bin/ffmpeg`
+- [x] `rsync` → `/usr/bin/rsync`
+- [x] `sshd` → `/usr/sbin/sshd`
+- [x] `/app/docker/entrypoint-ssh.sh` → `OK executable`
+- [x] `faster_whisper.__version__` = **1.2.1**
+- [x] `edge_tts.__version__` = **7.2.8**
+- [x] 環境變數正確：`LANG=C.UTF-8 LC_ALL=C.UTF-8 PYTHONPATH=/usr/local/lib/faster-whisper`
 
 ### 3.4 確認運行版本
 
-- [ ] `kubectl exec ... -- cat /app/package.json | grep '"version"'` = `2026.10.3`
-- [ ] `openclaw --version` = `2026.10.3`
+- [x] 容器內 `/app/package.json` → `"version": "2026.10.3"`
+- [x] `openclaw --version` → `OpenClaw 2026.10.3`
 
-### 3.5 回滾備案
+### 3.5 端到端功能驗證（真實訊息往返）
 
-- [ ] 驗證完好 → 無需回滾
-- [ ] 若 Doctor 報錯：保留 `/root/backup-openclaw-20261014`，將 kustomize image tag 回退至 `2026.10.2`
+- [x] Telegram 真實收發完整走一趟：
+  ```
+  07:39:25 [telegram] Inbound message telegram:830338761 -> @N100_openclaw_mike_bot (direct, 10 chars)
+  07:39:39 [model-fetch] provider=minimax api=anthropic-messages model=MiniMax-M3 status=200
+  07:39:43 [agent-turn-timing] milestone=tool_execution_started totalMs=15449
+  07:40:03 [telegram] outbound send ok chatId=830338761 messageId=2628 operation=sendMessage
+  ```
+  證明：收訊息 → 呼叫模型（HTTP 200）→ 執行工具 → 回覆送出，**全鏈路正常**。
 
-### 3.6 更新本 worksheet 全部勾選並發布收工 post-mortem
+### 3.6 回滾備案
+
+- [x] 備份完好且已驗證（17G / 148,732 檔案），**無需回滾**
+- [ ] 若需回滾：`kubectl -n openclaw set image deployment/openclaw-gateway gateway=ghcr.io/kuniakil/openclaw:2026.10.2`
+      並依 `rsync` 從 `/root/backup-openclaw-20261014` 還原資料
+
+### 3.7 更新本 worksheet 全部勾選並 commit
+
+- [x] commit 到 `my-config-v2026.10.3` 並 push
+- [x] `~/kubernetes` kustomization 變更 commit + push
 
 ---
 
@@ -260,8 +298,37 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 
 - **官方 Release Notes:** https://docs.openclaw.ai/releases/2026.10.3
 - **官方 Changelog (raw):** https://raw.githubusercontent.com/openclaw/openclaw/v2026.10.3/CHANGELOG/2026.10.3.md
+- **Image digest:** `sha256:ac45487f97e0432b88b022922df31b900c790339b585473b13288d89824fb8af`
+- **Build Run:** https://github.com/kuniakil/openclaw/actions/runs/38483327335
 - **GHCR image:** `ghcr.io/kuniakil/openclaw:2026.10.3`
 - **K3s 部署:** `~/kubernetes/openclaw/overlays/n100/`
-- **Backup 路徑:** `/root/backup-openclaw-20261014`（部署前建立）
+- **Backup 路徑:** `/root/backup-openclaw-20261014`（部署前建立，17G / 148,732 檔案，已驗證）
 - **SOP 來源：** `~/.pi/agent/skills/agent-release-upgrade/SKILL.md`、`docker-image-rebuild/SKILL.md`
 - **上一版 worksheet:** `docs/worksheet-upgrade-openclaw-v2026.10.2-20261012.md`
+
+---
+
+## 📌 本次升級待辦教訓（供下次參考）
+
+1. **Matrix `docker-release.yml` 只認 `workflow_dispatch`**，`git push tag` **不會**觸發建置。
+   舊 worksheet 的「push tag 就會觸發」說法錯誤。正確流程：
+
+   ```bash
+   git tag -f v2026.10.3 HEAD && git push -f origin v2026.10.3
+   gh workflow run docker-release.yml --repo kuniakil/openclaw \
+     --ref v2026.10.3 -f tag=v2026.10.3 -f platforms=all
+   ```
+
+   可用 `gh run view <id> --json event,headBranch,headSha` 驗證觸發參數正確。
+
+2. **官方 tag 是 annotated、我們自訂 tag 是 lightweight**。
+   本地 fetch 上游時會自動產生 annotated `v2026.10.3`（指向官方 commit）。
+   升級時必須 `git tag -f v2026.10.3 HEAD` 覆蓋為 lightweight tag，否則 tag 會留在官方 commit 上。
+
+3. **不要用本地 `v2026.x.y` tag 當 diff base**（含自訂 patch，會誤判大量衝突）。
+   一律另fetch `upstream-v<version>`（注意：其 `rev-parse` 拿到的是 tag object，要用 `^{commit}` 取真 commit）。
+
+4. **冷啟動瞬時警告不代表失敗**。agent DB 5 秒 startup budget 到期會出現
+   `cron maintenance failed` / `chat metadata refresh failed` / `[SECRETS_DEGRADED]`，
+   看到 `agent database recovered after background inspection and preparation` 即已恢復。
+   驗證健康度要看**後續真實流量**（本次以 Telegram 收發往返證明），不要只看啟動期錯誤。
