@@ -310,25 +310,62 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 
 ## 📌 本次升級待辦教訓（供下次參考）
 
+### 發布模型決策（2026-10-14，kuniaki 確認）
+
+往後採用**分支觸發**模型，已寫入 `~/.pi/agent/skills/agent-release-upgrade/SKILL.md`
+與 `~/.pi/agent/skills/docker-image-rebuild/SKILL.md`：
+
+```
+my-config-v<version> 分支  ←  官方版本 + 我們所有 custom commits（持續往前）
+        │
+        └─ dispatch build（--ref 分支 + -f tag）─→ image: <version>
+                                                       ↑
+                                    未來 rebuild 會覆蓋成更新的程式碼（預期行為）
+```
+
+| 項目                        | 結論                                                            |
+| --------------------------- | --------------------------------------------------------------- |
+| build 來源                  | `--ref my-config-v<version>`（分支）                            |
+| image 名稱                  | `-f tag=v<version>` → 與官方版本同名 `2026.10.3`                |
+| 是否需要 force-push git tag | **不需要**（build 只讀分支）                                    |
+| 未來加 commit 後 rebuild    | 重跑同一指令，`2026.10.3` image 被新版程式碼覆蓋 ← **預期行為** |
+
+**與本次做法的差異**：本次（10.3）已 force-push `v2026.10.3` → `70e5834dd4ee`，
+且實際由 tag 觸發（headSha 已驗證為我們的 commit）。**保持現狀、不重來**。
+下次升級（10.4 起）改用分支觸發。
+
+**已保留的 git tag 語意**：「官方 v2026.10.3 + 我們 custom commits 的**當下快照**」。
+日後分支繼續前進時，除非再次 force-push，否則 tag 不會動。
+
+### 其他待辦教訓
+
 1. **Matrix `docker-release.yml` 只認 `workflow_dispatch`**，`git push tag` **不會**觸發建置。
    舊 worksheet 的「push tag 就會觸發」說法錯誤。正確流程：
 
    ```bash
-   git tag -f v2026.10.3 HEAD && git push -f origin v2026.10.3
    gh workflow run docker-release.yml --repo kuniakil/openclaw \
-     --ref v2026.10.3 -f tag=v2026.10.3 -f platforms=all
+     --ref my-config-v<version> -f tag=v<version> -f platforms=all
    ```
 
-   可用 `gh run view <id> --json event,headBranch,headSha` 驗證觸發參數正確。
+   派發後務必用 `gh run view <id> --json event,headBranch,headSha` 驗證觸發參數。
 
-2. **官方 tag 是 annotated、我們自訂 tag 是 lightweight**。
-   本地 fetch 上游時會自動產生 annotated `v2026.10.3`（指向官方 commit）。
-   升級時必須 `git tag -f v2026.10.3 HEAD` 覆蓋為 lightweight tag，否則 tag 會留在官方 commit 上。
+2. **Input 名稱是 `tag` 不是 `tag_name`**。寫錯會被靜默忽略 → branch `--ref` 下 `TAG` 落到
+   `latest` → **build 成功但沒有版本 tag**。這是最容易踩的坑。
 
-3. **不要用本地 `v2026.x.y` tag 當 diff base**（含自訂 patch，會誤判大量衝突）。
-   一律另fetch `upstream-v<version>`（注意：其 `rev-parse` 拿到的是 tag object，要用 `^{commit}` 取真 commit）。
+3. **官方 tag 是 annotated、我們自訂 tag 是 lightweight**。
+   本地 fetch 上游時會自動產生 annotated `v2026.10.3`（指向官方 commit），注意覆蓋。
 
-4. **冷啟動瞬時警告不代表失敗**。agent DB 5 秒 startup budget 到期會出現
+4. **不要用本地 `v2026.x.y` tag 當 diff base**（含自訂 patch，會誤判大量衝突）。
+   一律另 fetch `upstream-v<version>`：
+
+   ```bash
+   git fetch upstream refs/tags/v<version>:refs/tags/upstream-v<version> --no-tags
+   git rev-parse upstream-v<version>^{commit}   # ref 本身是 annotated tag object，要加 ^{commit}
+   ```
+
+   `git fetch upstream --tags` 會因為本地 tag 是自訂的而全部被 reject。
+
+5. **冷啟動瞬時警告不代表失敗**。agent DB 5 秒 startup budget 到期會出現
    `cron maintenance failed` / `chat metadata refresh failed` / `[SECRETS_DEGRADED]`，
    看到 `agent database recovered after background inspection and preparation` 即已恢復。
    驗證健康度要看**後續真實流量**（本次以 Telegram 收發往返證明），不要只看啟動期錯誤。
