@@ -196,10 +196,26 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 - [x] 無重複 / 錯誤 run 需要取消（`gh run list` 僅此一筆 in_progress）
 - [x] 目標 image：`ghcr.io/kuniakil/openclaw:2026.10.3`（另含 `v2026.10.3`、`-slim`、`latest`、`main` 等連動 tag）
 
-**Step 3 — 監控建置結果**
+**Step 3 — 建置結果：成功 ✅**
 
-- [ ] 建置成功（amd64 + arm64 雙平台 + manifest merge）
-- [ ] `docker buildx imagetools inspect ghcr.io/kuniakil/openclaw:2026.10.3` 驗證 multi-arch manifest
+- [x] **Run `38483327335` conclusion: `success`**（全部 4 個 job 綠燈）
+  - `prepare` → success
+  - `build-and-push (linux/amd64)` → success
+  - `build-and-push (linux/arm64)` → success
+  - `merge` → success
+- [x] `docker buildx imagetools inspect ghcr.io/kuniakil/openclaw:2026.10.3` 驗證 multi-arch：
+  ```
+  MediaType: application/vnd.oci.image.index.v1+json
+  Digest:    sha256:ac45487f97e0432b88b022922df31b900c790339b585473b13288d89824fb8af
+    → linux/amd64  sha256:bb19376cf3b0d1171d1258459945432eb66a337238b9601fd8051bb4269ba057
+    → linux/arm64  sha256:ab36210762c2b7d13d8834bf0e0d2d1a304db75aa540958af155cf1756fab5db
+  ```
+
+> [!IMPORTANT]
+>
+> **Tag 與分支不同步是預期行為**：`v2026.10.3` tag 固定在 `70e5834dd4ee`（實際建置 image 的程式碼），
+> 而 `my-config-v2026.10.3` 分支後續推進到 `e996e651857`（僅新增 docs commit `record build trigger`）。
+> docs 變更不影響 image 內容，兩者一致。
 
 ---
 
