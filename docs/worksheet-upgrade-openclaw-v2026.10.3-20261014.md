@@ -161,17 +161,45 @@ git commit -m "chore: purge official CI workflows; use optimized matrix docker-r
 ### 2.6 Push 分支
 
 ```bash
-git push origin my-config-v2026.10.3
+git push -u origin my-config-v2026.10.3
 ```
 
-### 2.7 使用者確認 build 後
+- [x] 完成：`origin/my-config-v2026.10.3` = `70e5834dd4ee`（與 local HEAD 一致）
+
+### 2.7 使用者確認 build 後（已完成 ✅）
+
+> [!NOTE]
+>
+> **觸發機制修正**：我們的 Matrix `docker-release.yml` 是 **`workflow_dispatch` 專用**（`on:` 只有 `workflow_dispatch`，沒有 `push:` / `tags:`）。
+> 舊 worksheet 寫「push tag 會觸發」並不正確——`git push tag` **不會** 觸發建置，必須手動 dispatch。
+> 驗證依據：`gh run view 38263121081`（10.2 那次）顯示 `event: workflow_dispatch`、`headBranch: v2026.10.2`。
+
+**Step 1 — 將 tag 指向自訂 commit**
 
 ```bash
-git tag -f v2026.10.3
+git tag -f v2026.10.3 HEAD        # 原為 annotated tag → 官方 59cb44796b0f
 git push -f origin v2026.10.3
 ```
 
-觸發 `docker-release.yml` → `ghcr.io/kuniakil/openclaw:2026.10.3`
+- [x] `v2026.10.3` 轉為 lightweight tag → `70e5834dd4ee`（與 10.1 / 10.2 型態一致）
+- [x] `git ls-remote --tags origin v2026.10.3` = `70e5834dd4ee` ✅
+
+**Step 2 — 手動觸發建置**
+
+```bash
+gh workflow run docker-release.yml --repo kuniakil/openclaw \
+  --ref v2026.10.3 -f tag=v2026.10.3 -f platforms=all
+```
+
+- [x] **Run ID：`38483327335`**
+- [x] `event: workflow_dispatch` · `headBranch: v2026.10.3` · `headSha: 70e5834dd4ee` ✅
+- [x] 無重複 / 錯誤 run 需要取消（`gh run list` 僅此一筆 in_progress）
+- [x] 目標 image：`ghcr.io/kuniakil/openclaw:2026.10.3`（另含 `v2026.10.3`、`-slim`、`latest`、`main` 等連動 tag）
+
+**Step 3 — 監控建置結果**
+
+- [ ] 建置成功（amd64 + arm64 雙平台 + manifest merge）
+- [ ] `docker buildx imagetools inspect ghcr.io/kuniakil/openclaw:2026.10.3` 驗證 multi-arch manifest
 
 ---
 
