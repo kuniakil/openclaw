@@ -230,6 +230,9 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 
 - [x] **備份** `/data/services/openclaw` → `/root/backup-openclaw-20261014`
   - rsync 完成：17G / **148,732 檔案**（source 與 backup 檔案數、大小完全一致 ✅）
+  - **已於驗證通過後刪除**（2026-10-14，Phase 5.2）——本次部署確認健康，
+    且 10.2→10.3 `schemaVersions` 未變（state 20 / agent 24）無 DB 遷移，無回滾價值。
+  - 磁碟已回收 17G。
 - [x] `kubectl apply -k ~/kubernetes/openclaw/overlays/n100` → `successfully rolled out`
 - [x] 新 Pod：`openclaw-gateway-6655df6486-zsvbk`，`1/1 Running`，`RESTARTS 0`
 - [x] Deployment image 確認為 `ghcr.io/kuniakil/openclaw:2026.10.3`
@@ -283,9 +286,9 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 
 ### 3.6 回滾備案
 
-- [x] 備份完好且已驗證（17G / 148,732 檔案），**無需回滾**
-- [ ] 若需回滾：`kubectl -n openclaw set image deployment/openclaw-gateway gateway=ghcr.io/kuniakil/openclaw:2026.10.2`
-      並依 `rsync` 從 `/root/backup-openclaw-20261014` 還原資料
+- [x] 備份已於驗證通過後刪除（見 3.2）；本次無 schema 遷移，無回滾需求
+- [x] 若將來需回滾：`kubectl -n openclaw set image deployment/openclaw-gateway gateway=ghcr.io/kuniakil/openclaw:<prev>`
+      資料不需還原（10.2→10.3 無 DB 遷移），舊 DB 可直接被新版使用
 
 ### 3.7 更新本 worksheet 全部勾選並 commit
 
