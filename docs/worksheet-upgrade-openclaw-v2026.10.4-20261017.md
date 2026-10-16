@@ -246,24 +246,24 @@ git diff upstream-v2026.10.4 HEAD --stat -- ':!.github'
 
 > 與 10.3 升級時的 diff **逐字一致** → 自訂層在 10.4 完全相容。
 
-### 2.5 更新本 worksheet 勾選並 commit
+### 2.5 更新本 worksheet 勾選並 commit — 已完成 ✅
 
 ```bash
 git add docs/worksheet-upgrade-openclaw-v2026.10.4-20261017.md
 git commit -m "docs: add v2026.10.4 upgrade worksheet and mark Phase 2 preparation completed"
 ```
 
-- [ ] commit 完成
+- [x] commit `dcecf3688c0`（1 file, +404）
 
-### 2.6 Push 分支
+### 2.6 Push 分支 — 已完成 ✅
 
 ```bash
 git push -u origin my-config-v2026.10.4
 ```
 
-- [ ] `origin/my-config-v2026.10.4` 與 local HEAD 一致
+- [x] `origin/my-config-v2026.10.4` = `dcecf3688c0190f965e23e926a4099d5fbe4fafc`（與 local HEAD 一致）
 
-### 2.7 觸發 build（分支觸發模型）
+### 2.7 觸發 build（分支觸發模型）— 🛑 BLOCKED
 
 > [!IMPORTANT]
 >
@@ -275,14 +275,46 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
   --ref my-config-v2026.10.4 -f tag=v2026.10.4 -f platforms=all
 ```
 
-- [ ] 取得 `Run ID`
-- [ ] `gh run view <Run ID> --json event,headBranch,headSha` 驗證：
-  - `event: workflow_dispatch`
-  - `headBranch: my-config-v2026.10.4`
-  - `headSha: <我們的 HEAD，**絕對不是** 官方 383c124cc32f>`
-- [ ] `gh run watch <Run ID>` 至完成
+- [x] 分支已就緒，`--ref my-config-v2026.10.4` 與 `-f tag=v2026.10.4` 參數正確
+- [ ] 🛑 **BLOCKED：GitHub 回 `HTTP 422: Actions has been disabled for this repository.`**
 
-### 2.8 Build 結果驗證
+#### 診斷結果
+
+| 檢查項                                                   | 結果                                                      | 判定        |
+| -------------------------------------------------------- | --------------------------------------------------------- | ----------- |
+| `GET /repos/kuniakil/openclaw/actions/permissions`       | `{"enabled": true, "allowed_actions": "all"}`             | ✅ 正常     |
+| `GET .../actions/workflows`（未認證）                    | `Docker Release \| active`                                | ✅ active   |
+| `PUT .../actions/permissions enabled=true`               | 200（toggle 成功）                                        | ✅ 正常     |
+| `GET .../actions/runs`                                   | 200（讀取正常）                                           | ✅ 正常     |
+| `gh run list`（最近 6 次）                               | 全部 `conclusion: success`，最後一次 2026-10-13 23:17 UTC | ✅ 歷史正常 |
+| `githubstatus.com` Actions component                     | `operational`                                             | ✅ 服務正常 |
+| `POST .../dispatches`（用 workflow 名稱）                | **422**                                                   | 🛑 被拒     |
+| `POST .../dispatches`（用 workflow ID 265582554）        | **422**                                                   | 🛑 被拒     |
+| `POST .../dispatches`（ref 改成已知可用的 `v2026.10.3`） | **422**                                                   | 🛑 被拒     |
+| 重試 3 次                                                | 全部 422                                                  | 🛑 非暫時性 |
+| Token scopes                                             | `gist, read:org, repo, workflow`                          | ✅ 權限足夠 |
+| 帳號狀態                                                 | `suspended_at: None`、無 Actions 相關通知                 | ✅ 帳號正常 |
+
+**結論**：非分支、非 workflow 定義、非 token 權限、非 GitHub 服務故障。
+是 **GitHub 後端對此 fork repo 的 Actions 停用狀態**——API 的 `enabled` 旗標顯示為 true，
+但 dispatch 端點判定為 disabled。`repo.fork = true`、`default_branch = my-config-v2026.7.1`。
+
+最後一次成功 dispatch：**2026-10-13 23:17 UTC**（run `38483327335`，10.3 建置）。
+本次嘗試：**2026-10-16 23:46 UTC** → 間隔約 3 天。
+
+#### 可能的解除方式（依成本排序）
+
+1. **Web UI 手動確認 Actions**（最可能有效）
+   `https://github.com/kuniakil/openclaw/settings/actions` → 確認 "Enable Actions" toggle
+   若顯示已啟用，**toggle 關閉 → 儲存 → 再 toggle 開啟 → 儲存**（強制後端狀態同步）
+2. **Web UI 手動 dispatch**：`https://github.com/kuniakil/openclaw/actions/workflows/docker-release.yml`
+   → "Run workflow" → 選 `my-config-v2026.10.4` 分支、填 `tag=v2026.10.4`、`platforms=all`
+3. **等待 GitHub 自動恢復**（若為後端暫時性策略），再重試 API dispatch
+4. **聯絡 GitHub Support**（若上述皆無效，附 `x-github-request-id`）
+
+- [ ] 🛑 待使用者解除 blocker 後繼續
+
+### 2.8 Build 結果驗證（待 blocker 解除後執行）
 
 ```bash
 for t in 2026.10.4 v2026.10.4 2026.10.4-slim latest main; do
