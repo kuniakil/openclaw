@@ -278,39 +278,45 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 - [x] 分支已就緒，`--ref my-config-v2026.10.4` 與 `-f tag=v2026.10.4` 參數正確
 - [ ] 🛑 **BLOCKED：GitHub 回 `HTTP 422: Actions has been disabled for this repository.`**
 
-#### 診斷結果
+#### 診斷時間線
 
-| 檢查項                                                   | 結果                                                      | 判定        |
-| -------------------------------------------------------- | --------------------------------------------------------- | ----------- |
-| `GET /repos/kuniakil/openclaw/actions/permissions`       | `{"enabled": true, "allowed_actions": "all"}`             | ✅ 正常     |
-| `GET .../actions/workflows`（未認證）                    | `Docker Release \| active`                                | ✅ active   |
-| `PUT .../actions/permissions enabled=true`               | 200（toggle 成功）                                        | ✅ 正常     |
-| `GET .../actions/runs`                                   | 200（讀取正常）                                           | ✅ 正常     |
-| `gh run list`（最近 6 次）                               | 全部 `conclusion: success`，最後一次 2026-10-13 23:17 UTC | ✅ 歷史正常 |
-| `githubstatus.com` Actions component                     | `operational`                                             | ✅ 服務正常 |
-| `POST .../dispatches`（用 workflow 名稱）                | **422**                                                   | 🛑 被拒     |
-| `POST .../dispatches`（用 workflow ID 265582554）        | **422**                                                   | 🛑 被拒     |
-| `POST .../dispatches`（ref 改成已知可用的 `v2026.10.3`） | **422**                                                   | 🛑 被拒     |
-| 重試 3 次                                                | 全部 422                                                  | 🛑 非暫時性 |
-| Token scopes                                             | `gist, read:org, repo, workflow`                          | ✅ 權限足夠 |
-| 帳號狀態                                                 | `suspended_at: None`、無 Actions 相關通知                 | ✅ 帳號正常 |
+1. **2026-10-16 23:46 UTC** — 首次發現 422
+2. 使用者於 Web UI 完整 Save 所有 Actions 設定 → **仍為 422**
+   （設定層本來就已是 `enabled: true`，按 Save 不會改變後端狀態）
+3. 清除全部 Actions cache（317 筆 / 12.26 GB → 0）→ **仍為 422**，cache 假設**推翻**
+4. **決定性測試**：dispatch 不存在的 workflow → **404**（GitHub 辨識到 workflow 不存在）
+   dispatch 存在的 workflow → **422**（GitHub 認得它，但拒絕執行）
+   → 確認為 **repo 層級 Actions 停用**，位於 repo 設定之上
 
-**結論**：非分支、非 workflow 定義、非 token 權限、非 GitHub 服務故障。
-是 **GitHub 後端對此 fork repo 的 Actions 停用狀態**——API 的 `enabled` 旗標顯示為 true，
-但 dispatch 端點判定為 disabled。`repo.fork = true`、`default_branch = my-config-v2026.7.1`。
+#### 排除清單
 
-最後一次成功 dispatch：**2026-10-13 23:17 UTC**（run `38483327335`，10.3 建置）。
-本次嘗試：**2026-10-16 23:46 UTC** → 間隔約 3 天。
+| 假設                           | 驗證方法                         | 結果                                                                         |
+| ------------------------------ | -------------------------------- | ---------------------------------------------------------------------------- |
+| 分支／ref 問題                 | 改用已知可用的 `ref: v2026.10.3` | ❌ 仍 422                                                                    |
+| workflow 定義不存在            | `GET .../actions/workflows`      | ❌ `Docker Release \| active`，default branch 上確有 `workflow_dispatch`     |
+| token 權限不足                 | token scopes / 帳號角色          | ❌ `gist, read:org, repo, workflow`，admin: true                             |
+| 帳號層級停用                   | 對照組 dispatch                  | ❌ `kuniakil/n8n` **204 成功**、`kuniakil/hermes-web-ui`（fork）**204 成功** |
+| fork 身份本身                  | 同上，fork 的 hermes-web-ui 正常 | ❌                                                                           |
+| Actions 服務故障               | githubstatus.com                 | ❌ `operational`；近 7 天 incident 與本症狀無關                              |
+| 暫時性                         | 重試 3 次                        | ❌ 全 422                                                                    |
+| Cache 超額（12.26 GB > 10 GB） | 清除全部 317 筆 → 0              | ❌ **推翻**，仍 422                                                          |
+| 帳號被停用                     | `suspended_at` / notifications   | ❌ `None`，無通知                                                            |
+| 公開 repo 計費                 | 三個 repo visibility             | ❌ 皆 `public`，對照組 dispatch 正常                                         |
 
-#### 可能的解除方式（依成本排序）
+**最後一次成功 dispatch**：2026-10-13 23:17 UTC（run `38483327335`，10.3 建置）。
 
-1. **Web UI 手動確認 Actions**（最可能有效）
-   `https://github.com/kuniakil/openclaw/settings/actions` → 確認 "Enable Actions" toggle
-   若顯示已啟用，**toggle 關閉 → 儲存 → 再 toggle 開啟 → 儲存**（強制後端狀態同步）
-2. **Web UI 手動 dispatch**：`https://github.com/kuniakil/openclaw/actions/workflows/docker-release.yml`
-   → "Run workflow" → 選 `my-config-v2026.10.4` 分支、填 `tag=v2026.10.4`、`platforms=all`
-3. **等待 GitHub 自動恢復**（若為後端暫時性策略），再重試 API dispatch
-4. **聯絡 GitHub Support**（若上述皆無效，附 `x-github-request-id`）
+**對照外部案例**：GitHub `craft-native/craft#11` 有完全相同症狀（API 報 `enabled: true` 但 dispatch 422），
+最終診斷為「repo 設定之上的政策層阻擋」，約一個月後**自行解除**，非靠改設定解決。
+
+#### 備援路線可行性
+
+| 路線                | 可行性           | 說明                                                                       |
+| ------------------- | ---------------- | -------------------------------------------------------------------------- |
+| N100 主機本地 build | ❌ 不可行        | 無 docker / buildx / nerdctl / buildctl / podman / kaniko                  |
+| Mac 本機 build      | ⚠️ 違反 SOP      | OrbStack daemon 未啟動；SOP 明令禁止在 Mac 本機跑 docker build（資源保護） |
+| 等待 GitHub 解除    | ⏳ 前例約 1 個月 | 無法加速                                                                   |
+| GitHub Support      | 📞 可嘗試        | 需附 `x-github-request-id`                                                 |
+| 維持 `2026.10.3`    | ✅ 零風險        | K3s 目前正常運行，隨時可再升                                               |
 
 - [ ] 🛑 待使用者解除 blocker 後繼續
 
