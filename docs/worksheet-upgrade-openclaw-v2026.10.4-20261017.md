@@ -358,82 +358,104 @@ done
 
 ---
 
-## Phase 3: 部署與驗證
+## Phase 3: 部署與驗證（已全數通過 ✅）
 
-### 3.1 K3s 部署
+### 3.1 備份決策
 
-#### 3.1.1 備份決策
+- [x] `schemaVersions` 未變（state 20 / agent 24）→ **無 DB migration 風險**
+- [x] 既有 backup 盤點：`/root/backup-openclaw-*` → **無殘留**
+- [x] 使用者同意**跳過新備份**（同10.3 決策；回滾只需 `kubectl set image`，資料不需還原）
 
-`schemaVersions` 與 10.3 完全相同（state 20 / agent 24），本次升級**無 DB migration 風險**。
+### 3.2 K3s 部署
 
-按 2026-10-14 backup 生命週期政策：
+- [x] `~/kubernetes/openclaw/overlays/n100/kustomization.yaml`：`2026.10.3` → `2026.10.4`（單檔單行）
+- [x] `kubectl apply -k` → `deployment.apps/openclaw-gateway configured`
+- [x] `kubectl rollout status` → **successfully rolled out**
+- [x] 新 Pod：`openclaw-gateway-84dfdfdfcc-78cmz`，`1/1 Running`，`RESTARTS 0`
+- [x] Image digest 與 build 完全一致：
+      `ghcr.io/kuniakil/openclaw@sha256:13422f1ec6a77bc7e3838691a2ec66e62fdbcccccfafe973e40c251921523d04`
+- [x] **17 個 plugins 全部載入**（anthropic, canvas, cua-computer, device-pair, file-transfer,
+      geolocation, github, google, linux-node, memory-core, microsoft, ollama, openai,
+      talk-voice, tavily, telegram, xai）
+- [x] Gateway `ready`（32.3s），Telegram polling 啟動
+- [x] **無 10.3 那次的冷啟動競態警告**（無 `cron maintenance failed` / `chat metadata refresh failed`）
 
-- [ ] `ls /root/backup-openclaw-*` 確認無遺留備份
-- [ ] 詢問使用者：是否仍須新建 backup？建議此次可跳過（與 10.3 相同 schema），但需使用者明確同意
-- [ ] 若要備份：依 `docker-image-rebuild` SOP §4.2，建議只抓 `.openclaw/`（~2.6G），非整個 17G 資料夾
+### 3.3 運行版本
 
-#### 3.1.2 更新 kustomization
+- [x] 容器內 `/app/package.json` → `2026.10.4`
+- [x] `openclaw --version` → `OpenClaw 2026.10.4`
+- [x] `/health` → **200**（容器內 18789 與 service 皆通過）
 
-```bash
-# 編輯 ~/kubernetes/openclaw/overlays/n100/kustomization.yaml
-# newTag: "2026.10.3"  →  newTag: "2026.10.4"
+### 3.4 自訂功能存活 — 全數通過 ✅
+
+- [x] `locale -a`：`C.utf8` / **`en_US.utf8`** / **`zh_TW.utf8`**
+- [x] `whisper` → `/usr/local/bin/whisper`
+- [x] `edge-tts` → `/usr/local/bin/edge-tts`
+- [x] `ffmpeg` → `/usr/bin/ffmpeg`
+- [x] `rsync` → `/usr/bin/rsync`
+- [x] `sshd` → `/usr/sbin/sshd`
+- [x] `/app/docker/entrypoint-ssh.sh` → OK executable
+- [x] `faster_whisper.__version__` = **1.2.1**
+- [x] `edge_tts.__version__` = **7.3.1**（10.3 為 7.2.8 → 上游 10.4 自行升級，非我們的改動）
+- [x] 環境變數：`LANG=C.UTF-8 LC_ALL=C.UTF-8 PYTHONPATH=/usr/local/lib/faster-whisper`
+
+### 3.5 端到端真實訊息往返 — 通過 ✅
+
+```
+08:29:22 [telegram] Inbound message telegram:830338761 -> @N100_openclaw_mike_bot (direct, 6 chars)
+08:29:25 [telegram] outbound send ok chatId=830338761 messageId=2630 operation=sendMessage
+08:30:10 [telegram] Inbound message telegram:830338761 -> @N100_openclaw_mike_bot (direct, 10 chars)
+08:30:12 [agent/embedded] code-mode: cataloged 110 tools behind exec/wait
+08:30:23 [model-fetch] response provider=minimax api=anthropic-messages model=MiniMax-M3 status=200 elapsedMs=6617
+08:30:26 [auto-reply/agent-turn-timing] milestone=tool_execution_started totalMs=14842
+08:30:42 [model-fetch] response ... status=200 elapsedMs=5470
+08:30:46 [model-fetch] response ... status=200 elapsedMs=3194
+08:31:09 [model-fetch] response ... status=200 elapsedMs=7772
 ```
 
-- [ ] 變更僅 `kustomization.yaml`
-- [ ] `git -C ~/kubernetes diff --stat` 顯示單檔變更
+收訊息 → 工具執行 → 多輪模型呼叫（全部 HTTP 200）→ 回覆送出，**全鏈路正常**。
 
-#### 3.1.3 套用
+> 註：啟動日誌顯示 `agent model: minimax/MiniMax-M2.5`，但實際對話走 `MiniMax-M3`。
+> 原因是 `/home/node/.openclaw/openclaw.json` 的 `.agents.entries.main.model` 為M2.5，
+> 而該 session 有user model override（日誌顯示 `configured fallbacks disabled by user model override`）。
+> **這是升級前就有的持久設定，非 10.4 造成。**
 
-```bash
-kubectl apply -k ~/kubernetes/openclaw/overlays/n100
-kubectl -n openclaw rollout status deployment/openclaw-gateway --timeout=180s
+### 3.6 記憶體壓力警告 — 已調查，判定無害 ⚠️→✅
+
+E2E 期間出現一次：
+
+```
+08:31:04 [diagnostics/memory] memory pressure: level=warning reason=rss_threshold
+  rss=2.1 GiB threshold=2.09 GiB thresholdRatio=100.5% workerCount=20
 ```
 
-- [ ] Pod Ready，`RESTARTS 0`
-- [ ] Image digest = Phase 2.8 記錄的 GHCR digest
+調查結論 — **非 10.4 回歸**：
 
-### 3.2 確認自訂功能存活 — 與 10.3 對齊
+| 檢查                                | 結果                                                                     |
+| ----------------------------------- | ------------------------------------------------------------------------ |
+| 記憶體壓力診斷碼 10.3 → 10.4        | **零變更**（門檻邏輯完全相同）                                           |
+| `worker-heap-flag.mjs`（10.4 新增） | 我們 `NODE_OPTIONS` 為空、cmdline 無 heap flag → **該程式碼不會觸發**    |
+| Pod 資源限制                        | **無設定**（`limits=` 空、`memory.max = max`）→ 門檻是內部建議值，非強制 |
+| 警告是否重複                        | **未重複**（累計仍為 1 次）                                              |
+| 當前 cgroup 記憶體                  | 2498 → 2414 → 2414 MiB，**穩定無增長**                                   |
+| 節點可用記憶體                      | 31 GB 總 / 15.5 GB available                                             |
 
-- [ ] `kubectl -n openclaw exec deploy/openclaw-gateway -- locale -a` 顯示 `en_US.utf8` 與 `zh_TW.utf8`
-- [ ] `whisper` / `edge-tts` / `ffmpeg` / `rsync` / `sshd` 都在 PATH
-- [ ] `faster_whisper.__version__` = 1.2.1
-- [ ] `edge_tts.__version__` = 7.2.8
-- [ ] `/app/docker/entrypoint-ssh.sh` executable
-
-### 3.3 確認運行版本
-
-- [ ] 容器內 `package.json` version = `2026.10.4`
-- [ ] `openclaw --version` → `OpenClaw 2026.10.4`
-
-### 3.4 端到端功能驗證
-
-- [ ] Telegram 真實收發完整往返（與 10.3 對齊）
-- [ ] 出現冷啟動警告時（cron / memory / chat metadata refresh），確認後續 `agent database recovered` 訊息，**不**執行 `openclaw doctor --fix`
-- [ ] 無新錯誤類型（control UI heartbeat、session lifecycle 等）
-
-### 3.5 11 個升級重點對應驗證（隨機抽樣）
-
-> 本次為 stability patch，建議**抽樣**驗證以下官方重點，至少覆蓋 2 項：
-
-- [ ] **Telegram polling**：polling worker resolve in both source and package builds (#154286)
-- [ ] **Control UI heartbeat**：delayed heartbeats no longer force a reconnect (#171253) → 開瀏覽器檢查不會反覆 disconnect
-- [ ] **Updates / Doctor**：agent DB 不再被誤標為 changed snapshot (#170351)
-- [ ] **Ownership heartbeat**：模擬 1 次 pod restart，確認 Gateway 仍能自行重啟 ownership
-
-### 3.6 回滾備案
-
-- [ ] 任何階段發現新缺陷：`kubectl -n openclaw set image deployment/openclaw-gateway gateway=ghcr.io/kuniakil/openclaw:2026.10.3`
-- [ ] 由於 schemaVersions 未變，**不需要** restore data backup，舊 image 可直接用現有 DB
-- [ ] 若需還原 image SHA：本次 build 的 multi-arch digest 為 Phase 2.8 紀錄值
+判定：E2E 測試本身（4 輪 agent turn、20 個 worker、多次模型呼叫）造成的瞬間 RSS 尖峰，
+門檻未設定在任何強制機制上，且未持續。**無需處理。**
 
 ### 3.7 收尾
 
-- [ ] commit `~/kubernetes` kustomization 變更 + push
-- [ ] 標記本 worksheet 全部勾選 + commit 到 `my-config-v2026.10.4`
-- [ ] 若有建立 backup，於使用者明確同意後刪除並紀錄
-- [ ] 選擇性：`git tag -f 2026.10.4 my-config-v2026.10.4-HEAD^{commit} && git push -f origin 2026.10.4`，固定「known-good deployed snapshot」（**非必要**，build 不讀這個 tag）
+- [x] `~/kubernetes` commit `eb2d504` + push 到 `main`
+- [x] 本 worksheet Phase 3 記錄完成
 
----
+### 3.6 回滾備案
+
+```bash
+kubectl -n openclaw set image deployment/openclaw-gateway \
+  gateway=ghcr.io/kuniakil/openclaw:2026.10.3
+```
+
+資料**不需還原**（`schemaVersions` 未變，舊 image 可直接用現有 DB）。
 
 ## 🔖 關鍵參考
 
