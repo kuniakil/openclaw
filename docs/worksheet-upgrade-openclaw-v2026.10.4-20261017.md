@@ -276,49 +276,70 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 ```
 
 - [x] 分支已就緒，`--ref my-config-v2026.10.4` 與 `-f tag=v2026.10.4` 參數正確
-- [ ] 🛑 **BLOCKED：GitHub 回 `HTTP 422: Actions has been disabled for this repository.`**
+- [x] 🛑 **初次 BLOCKED：`HTTP 422: Actions has been disabled for this repository.`** → 已於步驟 2.7.1 解除
 
 #### 診斷時間線
 
 1. **2026-10-16 23:46 UTC** — 首次發現 422
-2. 使用者於 Web UI 完整 Save 所有 Actions 設定 → **仍為 422**
-   （設定層本來就已是 `enabled: true`，按 Save 不會改變後端狀態）
+2. 使用者於 `/settings/actions` 完整 Save 所有設定 → **仍為 422**
+   （設定層本來就是 `enabled: true`，**按錯地方** — 停用不由 permissions 端點管理）
 3. 清除全部 Actions cache（317 筆 / 12.26 GB → 0）→ **仍為 422**，cache 假設**推翻**
-4. **決定性測試**：dispatch 不存在的 workflow → **404**（GitHub 辨識到 workflow 不存在）
-   dispatch 存在的 workflow → **422**（GitHub 認得它，但拒絕執行）
-   → 確認為 **repo 層級 Actions 停用**，位於 repo 設定之上
+4. **決定性測試**：dispatch 不存在的 workflow → **404**；dispatch 我們的 → **422**
+   → 確認 repo 層級 Actions 停用，位於 repo 設定之上
+5. **找到根因**：抓取 `/actions` 頁面 HTML，比中 GitHub 的橫幅字串
+   > "Workflows are not currently being run on this fork **due to the scale of GitHub Actions usage**.
+   > A repository maintainer can choose to re-enable these."
 
-#### 排除清單
+#### 根因：GitHub 的 fork Actions 用量自動停用
 
-| 假設                           | 驗證方法                         | 結果                                                                         |
-| ------------------------------ | -------------------------------- | ---------------------------------------------------------------------------- |
-| 分支／ref 問題                 | 改用已知可用的 `ref: v2026.10.3` | ❌ 仍 422                                                                    |
-| workflow 定義不存在            | `GET .../actions/workflows`      | ❌ `Docker Release \| active`，default branch 上確有 `workflow_dispatch`     |
-| token 權限不足                 | token scopes / 帳號角色          | ❌ `gist, read:org, repo, workflow`，admin: true                             |
-| 帳號層級停用                   | 對照組 dispatch                  | ❌ `kuniakil/n8n` **204 成功**、`kuniakil/hermes-web-ui`（fork）**204 成功** |
-| fork 身份本身                  | 同上，fork 的 hermes-web-ui 正常 | ❌                                                                           |
-| Actions 服務故障               | githubstatus.com                 | ❌ `operational`；近 7 天 incident 與本症狀無關                              |
-| 暫時性                         | 重試 3 次                        | ❌ 全 422                                                                    |
-| Cache 超額（12.26 GB > 10 GB） | 清除全部 317 筆 → 0              | ❌ **推翻**，仍 422                                                          |
-| 帳號被停用                     | `suspended_at` / notifications   | ❌ `None`，無通知                                                            |
-| 公開 repo 計費                 | 三個 repo visibility             | ❌ 皆 `public`，對照組 dispatch 正常                                         |
+| 問題                 | 答案                                                                                                                                                                 |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 為什麼 API 查不到？  | 此停用**不由** `actions/permissions` 端點管理，API 仍回 `enabled: true`。所有 API 探測都會誤導                                                                       |
+| 為什麼沒有通知信？   | GitHub **不寄信**，只有 Actions 頁面橫幅                                                                                                                             |
+| 為什麼 Save 沒用？   | 停用橫幅與啟用按鈕在 **`/actions`（執行頁）**，不是 `/settings/actions`                                                                                              |
+| 是 2000 分鐘限制嗎？ | **不是。** ① GitHub 官方文件：public repository 的標準 GitHub-hosted runner **免費且無限制**；2000 分鐘僅適用 private repo。② 觸發條件是 **fork 的用量規模**，非計費 |
 
-**最後一次成功 dispatch**：2026-10-13 23:17 UTC（run `38483327335`，10.3 建置）。
+**外部佐證**：`StartupBros-com/better-ccflare#463` 記錄完全相同的症狀與 API 探測結果，
+最後由 maintainer 點 Actions 頁面橫幅按鈕恢復。我們的診斷表與該記錄逐項吻合。
 
-**對照外部案例**：GitHub `craft-native/craft#11` 有完全相同症狀（API 報 `enabled: true` 但 dispatch 422），
-最終診斷為「repo 設定之上的政策層阻擋」，約一個月後**自行解除**，非靠改設定解決。
+#### 排除清單（皆已實測推翻）
 
-#### 備援路線可行性
+| 假設                           | 驗證方法                                                       | 結果        |
+| ------------------------------ | -------------------------------------------------------------- | ----------- |
+| 分支／ref 問題                 | 改用 `ref: v2026.10.3`                                         | ❌ 仍 422   |
+| workflow 定義不存在            | workflow list `active` + default branch 有 `workflow_dispatch` | ❌          |
+| token 權限不足                 | scopes 齊全、admin: true                                       | ❌          |
+| 帳號層級停用                   | 對照組 `kuniakil/n8n` **204 成功**                             | ❌          |
+| fork 身份本身                  | 對照組 fork `kuniakil/hermes-web-ui` **204 成功**              | ❌          |
+| Actions 服務故障               | githubstatus.com `operational`                                 | ❌          |
+| 暫時性                         | 重試 3 次                                                      | ❌ 全 422   |
+| Cache 超額（12.26 GB > 10 GB） | 清除全部 317 筆 → 0                                            | ❌ **推翻** |
+| 帳號停用                       | `suspended_at: None`、無通知                                   | ❌          |
+| 公開 repo 計費                 | 三 repo 皆 public，對照組正常                                  | ❌          |
+| **fork 用量規模**              | **頁面橫幅直接指明**                                           | ✅ **根因** |
 
-| 路線                | 可行性           | 說明                                                                       |
-| ------------------- | ---------------- | -------------------------------------------------------------------------- |
-| N100 主機本地 build | ❌ 不可行        | 無 docker / buildx / nerdctl / buildctl / podman / kaniko                  |
-| Mac 本機 build      | ⚠️ 違反 SOP      | OrbStack daemon 未啟動；SOP 明令禁止在 Mac 本機跑 docker build（資源保護） |
-| 等待 GitHub 解除    | ⏳ 前例約 1 個月 | 無法加速                                                                   |
-| GitHub Support      | 📞 可嘗試        | 需附 `x-github-request-id`                                                 |
-| 維持 `2026.10.3`    | ✅ 零風險        | K3s 目前正常運行，隨時可再升                                               |
+#### 2.7.1 解除與觸發
 
-- [ ] 🛑 待使用者解除 blocker 後繼續
+- [x] 使用者點擊 `/actions` 頁面橫幅的重新啟用按鈕
+- [x] 重試 dispatch → **HTTP 204**
+
+```bash
+gh workflow run docker-release.yml --repo kuniakil/openclaw \
+  --ref my-config-v2026.10.4 -f tag=v2026.10.4 -f platforms=all
+```
+
+- [x] **Run ID：`38984685525`**（14 分 18 秒）
+- [x] `event: workflow_dispatch` · `headBranch: my-config-v2026.10.4` · `headSha: 330c6b60a62` ✅（**我們的** commit，非官方 `383c124cc32f`）
+- [x] 4 個 job 全綠：`prepare` / `build-and-push (amd64)` / `build-and-push (arm64)` / `merge`
+- [x] **保留 GHA buildx cache**（使用者決定：下次被停用再手動點掉）
+
+#### 備援路線（已不需要，保留記錄）
+
+| 路線                | 可行性           | 說明                                                       |
+| ------------------- | ---------------- | ---------------------------------------------------------- |
+| N100 主機本地 build | ❌ 不可行        | 無 docker / buildx / nerdctl / buildctl / podman / kaniko  |
+| Mac 本機 build      | ⚠️ 違反 SOP      | OrbStack daemon 未啟動；SOP 禁止在 Mac 本機跑 docker build |
+| 等待 GitHub 解除    | ⏳ 前例約 1 個月 | **不需要了**，橫幅按鈕立即恢復                             |
 
 ### 2.8 Build 結果驗證（待 blocker 解除後執行）
 
@@ -329,8 +350,11 @@ for t in 2026.10.4 v2026.10.4 2026.10.4-slim latest main; do
 done
 ```
 
-- [ ] 至少 `2026.10.4` 與 `v2026.10.4` 必須 OK
-- [ ] 記錄 build run URL 與 image digest
+- [x] 全部 5 個 tag 存在：`2026.10.4` ✅ `v2026.10.4` ✅ `2026.10.4-slim` ✅ `latest` ✅ `main` ✅
+- [x] **Build Run**：https://github.com/kuniakil/openclaw/actions/runs/38984685525
+- [x] **Multi-arch digest**：`sha256:13422f1ec6a77bc7e3838691a2ec66e62fdbcccccfafe973e40c251921523d04`
+  - `linux/amd64` → `sha256:0ac39d6443cb1440a484e4bbc3ddaba33c574135ff381e629ec25cb8798a9ba9`
+  - `linux/arm64` → `sha256:4aa1d5bfd53228e449793d9c64e5a68acbd76bb7ce45735fb18755b73d693c2f`
 
 ---
 
@@ -416,8 +440,9 @@ kubectl -n openclaw rollout status deployment/openclaw-gateway --timeout=180s
 - **官方 Release Notes:** https://github.com/openclaw/openclaw/releases/tag/v2026.10.4
 - **官方 Changelog:** https://raw.githubusercontent.com/openclaw/openclaw/v2026.10.4/CHANGELOG/2026.10.4.md
 - **官方 release SHA:** `383c124cc32ffee3f8e56f549b88da94d269a4af`
-- **Image:** `ghcr.io/kuniakil/openclaw:2026.10.4`（待 Phase 2.8 確定 digest）
-- **Build Run:** 待 Phase 2.8 紀錄
+- **Image:** `ghcr.io/kuniakil/openclaw:2026.10.4`
+- **Image digest:** `sha256:13422f1ec6a77bc7e3838691a2ec66e62fdbcccccfafe973e40c251921523d04`
+- **Build Run:** https://github.com/kuniakil/openclaw/actions/runs/38984685525（success）
 - **K3s 部署:** `~/kubernetes/openclaw/overlays/n100/`
 - **SOP 來源：** `~/.pi/agent/skills/agent-release-upgrade/SKILL.md`、`~/.pi/agent/skills/docker-image-rebuild/SKILL.md`
 - **上一版 worksheet:** `docs/worksheet-upgrade-openclaw-v2026.10.3-20261014.md`
