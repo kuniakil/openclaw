@@ -288,17 +288,16 @@ extensions/memory-core/src/memory/manager-embedding-ops.ts
 - [x] `package.json` → `2026.10.5` · `{'state': 20, 'agent': 25}`
 - [x] `git log --merges 'upstream-v2026.10.5^{commit}'..HEAD` → **0** 個 merge commit
 - [x] `git diff 'upstream-v2026.10.5^{commit}' HEAD --stat -- ':!.github'` → 恰好 10 檔、+1545 / −62：
-      `     Dockerfile                                                    |  46 ++
-  TODO-docker-build-rsync-utf8.md                               |  38 ++
-  assets/whisper                                                |  41 ++
-  docker/entrypoint-ssh.sh                                      |  32 ++
-  docs/worksheet-upgrade-openclaw-v2026.10.1-20261011.md        | 326 ++
-  docs/worksheet-upgrade-openclaw-v2026.10.2-20261012.md        | 111 ++
-  docs/worksheet-upgrade-openclaw-v2026.10.3-20261014.md        | 383 ++
-  docs/worksheet-upgrade-openclaw-v2026.10.4-20261017.md        | 489 ++
-  extensions/google/embedding-provider.ts                       | 139 ++---
-  extensions/memory-core/src/memory/manager-embedding-ops.ts     |   2 +-
-  `
+      `    Dockerfile                                                    |  46 ++
+TODO-docker-build-rsync-utf8.md                               |  38 ++
+assets/whisper                                                |  41 ++
+docker/entrypoint-ssh.sh                                      |  32 ++
+docs/worksheet-upgrade-openclaw-v2026.10.1-20261011.md        | 326 ++
+docs/worksheet-upgrade-openclaw-v2026.10.2-20261012.md        | 111 ++
+docs/worksheet-upgrade-openclaw-v2026.10.3-20261014.md        | 383 ++
+docs/worksheet-upgrade-openclaw-v2026.10.4-20261017.md        | 489 ++
+extensions/google/embedding-provider.ts                       | 139 ++---
+extensions/memory-core/src/memory/manager-embedding-ops.ts     |   2 +-`
 
 > 與 10.4 升級時的 diff 形狀逐字一致 → 自訂層在 10.5 完全相容。
 
@@ -394,18 +393,71 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 - [ ] **`x` plugin 處於未設定 / 未啟用狀態**（不應有對外監聽或 API 呼叫）
 - [ ] Gateway `ready`
 
+### 3.2 Schema migration ⭐ 本次真正的關卡
+
+> [!IMPORTANT]
+> **計畫修正**：原以為 migration 會自動執行。**實際不會。**
+> `assertCanonicalAgentPersistenceVersion`（`src/state/openclaw-agent-db-schema-read.ts:50`）是
+> **讀取守門員**：當 `userVersion < OPENCLAW_AGENT_SCHEMA_VERSION` 就直接 throw，
+> OpenClaw 刻意 fail closed，把 mutation 交給 Doctor（`src/commands/doctor-agent-database-*.ts`）。
+>
+> 症狀：套用新 image 後 Gateway 活著但 **sessions 全部不可用**：
+>
+> ```
+> [state/agent-admission] agent database remains degraded agentId=main
+>   reason="...uses schema version 24; stop active agents and run openclaw doctor --fix ..."
+>   repairHint="Sessions remain unavailable. Stop the Gateway, run \"openclaw doctor --fix\" ... and restart."
+> [cron/maintenance] Cron maintenance failed ...（每分鐘重複）
+> [plugins] memory-core: dreaming startup cleanup failed for agent main ...
+> ```
+>
+> **處置（已執行）**：停 Gateway → 一次性 Job 跑 `openclaw doctor --fix` → 重啟。
+> Job manifest：`/tmp/openclaw-doctor-job.yaml`（同 image、同 hostPath 掛載、`envFrom: secrets-env`、
+> 繞過 gateway entrypoint 直接跑 CLI、`backoffLimit: 0` 避免重試）。
+
+- [x] `kubectl scale --replicas=0`，確認 DB 無持有者（`No resources found`）
+- [x] Job `openclaw-doctor-fix-20261019` **succeeded:1**（62 秒）
+- [x] 關鍵行：`Upgraded agent database schema in .../openclaw-agent.sqlite: v24 -> v25`
+- [x] **agent DB `user_version` = 25** ✅
+- [x] state DB `user_version` = 20（不變，符合預期）
+- [x] `agent_databases` registry row **同步為 25** ✅（避免 agent 被 filter 掉）
+- [x] agent DB `quick_check` = ok
+- [x] 重啟後：`degraded` / `schema version 24` / `MigrationRequired` **全部消失**
+- [x] `cron/maintenance` 不再失敗（先前每分鐘失敗）
+- [x] memory-core dreaming 清理不再失敗
+- [x] Doctor 另存**它自己的** pre-migration 備份（第二條獨立回滾路徑）：- `/home/node/.openclaw/agents/main/agent/openclaw-agent.sqlite.pre-startup-migration-<uuid>.bak` - `/home/node/.openclaw/state/openclaw.sqlite.pre-startup-migration-<uuid>.bak` - `/home/node/.openclaw.update-captures/doctor-<uuid>/manifest.json`
+- [x] 只讀 `openclaw doctor` → **Doctor complete，無任何 error 級項目**
+
+### 3.2.1 Plugin 載入驗證
+
+- [x] **17 plugins**，與 10.4 **完全相同**：`anthropic, canvas, cua-computer, device-pair,
+    file-transfer, geolocation, github, google, linux-node, memory-core, microsoft, ollama,
+    openai, talk-voice, tavily, telegram, xai`
+- [x] **`x` plugin 未載入** — 與原預期 18 個不同。該 channel plugin 需設定才啟用，
+      未設定即不載入。**實務上比預期安全**（無新增對外通道）
+- [x] 無任何 admission 失敗（Codex 門檻已於 2.0.1 確認不適用）
+
 ### 3.3 運行版本
 
-- [ ] 容器內 `/app/package.json` → `2026.10.5`
-- [ ] `openclaw --version` → `OpenClaw 2026.10.5`
-- [ ] `/health` → 200
+- [x] 容器內 `/app/package.json` → `2026.10.5`
+- [x] `openclaw --version` → `OpenClaw 2026.10.5`
+- [x] `/health` → **200**
+- [x] Pod：`openclaw-gateway-697b89c68f-cfbjw`，`1/1 Running`，`RESTARTS 0`
+- [x] Image digest 與 2.8 記錄一致：`ghcr.io/kuniakil/openclaw@sha256:faaa138d2b3e...`
 
-### 3.4 自訂功能存活
+### 3.4 自訂功能存活 — 全數通過 ✅
 
-- [ ] `locale -a`：`C.utf8` / `en_US.utf8` / `zh_TW.utf8`
-- [ ] `whisper` / `edge-tts` / `ffmpeg` / `rsync` / `sshd` 皆在
-- [ ] `/app/docker/entrypoint-ssh.sh` OK executable
-- [ ] `faster_whisper.__version__`、`edge_tts.__version__`
+- [x] `locale -a`：`C.utf8` / **`en_US.utf8`** / **`zh_TW.utf8`**
+- [x] `whisper` → `/usr/local/bin/whisper`
+- [x] `edge-tts` → `/usr/local/bin/edge-tts`
+- [x] `ffmpeg` → `/usr/bin/ffmpeg`
+- [x] `rsync` → `/usr/bin/rsync`
+- [x] `sshd` → `/usr/sbin/sshd` 存在且 listener 運行中
+      （⚠️ 非互動 shell 的 `PATH` 不含 `/usr/sbin`，故 `which sshd` 會 MISSING —— 那是 PATH 問題，非缺失）
+- [x] `/app/docker/entrypoint-ssh.sh` → OK executable
+- [x] `faster_whisper.__version__` = **1.2.1**
+- [x] `edge_tts.__version__` = **7.3.1**
+- [x] Doctor 亦偵測到自訂層：`Local STT auto-selection: whisper`
 
 ### 3.5 Gemini rate pacing 實機驗證 ⭐ 本次自訂 patch 的真實價值
 
@@ -413,35 +465,66 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 - [ ] 確認 `gemini` provider 索引併發為 1（我們的 1 行 patch 生效）
 - [ ] 連續請求間隔觀察符合 ~4.2 s pacing
 
+> 需真實 memory 索引流量才能驗證；待有實際 embedding 請求時補驗。
+
 ### 3.6 端到端真實訊息往返（Telegram）
 
-- [ ] 收訊息 → 工具執行 → 多輪模型呼叫（全 200）→ 回覆送出
+- [x] `openclaw sessions list` 可讀出 session 與歷史 → **sessions 恢復**
+      （`agent:main:teleg...338761`，`39k/200k`，MiniMax-M2.5）
+- [ ] 收訊息 → 工具執行 → 多輪模型呼叫（全 200）→ 回覆送出（待使用者實測）
 - [ ] **確認 hook tool-policy 收緊後，工具審批仍正常運作**（breaking #1）
 
 ### 3.7 記憶體趨勢觀察
 
 - [ ] 官方宣稱「回到 10.4 區間」，對照 10.4 實測值（10.4 實測 2498 → 2414 → 2414 MiB）
-- [ ] 採**趨勢**判斷，不以單次 `rss_threshold` 警告升級為事故（見 SOP Phase 3）
-- [ ] 只有在**重複出現** / **單調上升** / **逼近真實 `resources.limits`** 時才升級處理
+- [x] 冷啟動後 cgroup memory = **774 MiB**（`811040768` bytes）→ 明顯低於 10.4 的 ~2.4 GB
+- [x] 新 worker 架構確認生效：`sqlite-readonly-location.worker.js --openclaw-sqlite-readonly-child session`
+- [x] 採**趨勢**判斷，不以單次 `rss_threshold` 警告升級為事故（見 SOP Phase 3）
+- [x] 目前**無** `rss_threshold` 警告、無 `MaxListenersExceededWarning` 以外的異常
 
-### 3.8 回滾備案（⚠️ 受 schema migration 限制）
+### 3.8 回滾備案（⚠️ schema 已 migration，回滾需還原備份）
 
 ```bash
-# ⚠️ 僅在 10.5 尚未寫入 agent DB 前有效；
-#    一旦 10.5 完成 migration，10.4 會拒絕服務（schema 25 ≠ 24）。
+# 1. 停 Gateway（doctor 與還原都必須）
+kubectl -n openclaw scale deploy/openclaw-gateway --replicas=0
+
+# 2. 清掉 migration 後的 sidecar，否則 SQLite 會 replay 比主檔更進度的 WAL
+rm -f /data/services/openclaw/.openclaw/agents/main/agent/openclaw-agent.sqlite-wal{,m}
+rm -f /data/services/openclaw/.openclaw/state/openclaw.sqlite-wal{,m}
+
+# 3. 必須「兩個 DB 一起」還原 —— agent_databases registry 會記錄 schema_version，
+#    且讀取端做精確比對過濾；只還原 agent DB 會讓 registry 與實際檔案不一致
+cp /home/kuniaki/backup-openclaw-20261019/agents/main/agent/openclaw-agent.sqlite \
+   /data/services/openclaw/.openclaw/agents/main/agent/openclaw-agent.sqlite
+cp /home/kuniaki/backup-openclaw-20261019/state/openclaw.sqlite \
+   /data/services/openclaw/.openclaw/state/openclaw.sqlite
+
+# 4. 驗證（應為 24 / 20）
+sqlite3 <agent-db> "PRAGMA quick_check; PRAGMA user_version;"
+sqlite3 <state-db> "PRAGMA user_version;"
+
+# 5. 改回 image 並恢復
 kubectl -n openclaw set image deployment/openclaw-gateway \
   gateway=ghcr.io/kuniakil/openclaw:2026.10.4
+kubectl -n openclaw scale deploy/openclaw-gateway --replicas=1
 ```
 
-**若 10.5 已完成 migration 而需回退：必須同時還原 3.0 的備份，Gateway 需停機。**
-
-- [ ] 把此限制寫入本 worksheet 的 Phase 3 結論
+- [x] 把此限制寫入本 worksheet 的 Phase 3 結論
+- [x] **現況：`user_version` 已為 25 → 單改 image tag 不再可行，必須走上述還原流程**
+- [x] 另有 doctor 自存的 pre-migration `.bak` 可作第二選擇（位於同一 hostPath）
 
 ### 3.9 收尾
 
-- [ ] 本 worksheet Phase 3 全部勾選完成
-- [ ] 記錄 build run ID、image digest、pod 名稱、實測記憶體
+- [x] `~/kubernetes` commit `df98ea3`（`chore(openclaw): bump n100 image tag to 2026.10.5`）
+- [ ] ⚠️ **`~/kubernetes` push 失敗**：`Invalid username or token. Password authentication is not supported`
+      credential helper = `store`，推測 token 過期。僅本機 commit，**未推送**（`領先 1`）。
+      未自行更動憑證（需使用者處理）。**不影響運行中的部署**（image 已在 in-cluster 生效）。
+      ⚠️ 這可能也是為何該檔案自 `2026.8.2` 之後就沒再出現新 commit。
+- [ ] 3.5 Gemini pacing 實機驗證（需真實 embedding 流量）
+- [ ] 3.6 Telegram E2E 真實往返（需使用者發訊息）
+- [ ] 3.7 記憶體長期趨勢
 - [ ] 備份生命週期決策（驗證完成後回收或保留，寫明理由）
+- [x] 本 worksheet Phase 3 核心項目完成
 
 ---
 
@@ -463,14 +546,16 @@ kubectl -n openclaw set image deployment/openclaw-gateway \
 
 ## 📌 本次升級特色
 
-1. **首次帶 schema migration**（`agent` 24 → 25）— 備份從可跳過變成強制，
-   回滾手段從「改 image tag」變成「改 image tag + 還原備份（需停機）」。
-2. **首次非零衝突升級** — 3 個自訂功能檔案全部與上游 10.5 重疊。
-   其中 `manager-embedding-ops.ts` 是上游大改後仍保留原行的 1 行 patch（手動重貼、風險極低），
-   `embedding-provider.ts` 的 pacing 套接點已逐行驗證在 10.5 依然存在。
-3. **官方規模爆炸**（23,713 files）— 核心原因是 session / turn / state 資料庫讀取全面搬到
-   worker thread。對我們直接相關的是啟動記憶體改善與 10.4 觀察到的 `rss_threshold` 尖峰有望緩解。
-4. **兩個行為收緊要驗證** — tool approval hook policy 收緊（#142700）、
-   Codex runtime < 2026.9.7 被 admission 拒絕（#168930）。我們無自訂 hook，
-   但我們確實有 `codex-home`，必須在 Phase 3.2 實機確認。
-5. **新增 `x` bundled plugin**（X/Twitter mentions）— attack surface 擴大，需確認未啟用。
+1. **首次帶 schema migration，且 migration 不會自動跑。** `agent` 24 → 25。
+   這是本次最大的計畫誤差：`assertCanonicalAgentPersistenceVersion` 是 fail-closed 讀取守門員，
+   必須手動 `openclaw doctor --fix`。**下次遇到 schemaVersions 變動，應在 `kubectl apply` 之前
+   就把 doctor --fix 排進部署序列**（停 Gateway → doctor → 啟動）。
+2. **Codex 門檻實查後證實不適用** — `minimumCompatibleVersion: "2026.9.7"` 只作用於
+   `@openclaw/codex` npm runtime plugin，且僅在設定了 codex runtime 時評估。我們未設定 → 提前結案。
+3. **首次非零衝突，結果仍零衝突。** 3 個自訂功能檔案全部與上游 10.5 重疊，但三向 auto-merge 全部成功。
+   關鍵是**逐項驗證雙方改動都在**（特別是 `manager-embedding-ops.ts`：上游大改後那 1 行仍精確對位）。
+4. **`x` plugin 未載入**（17 plugins，與 10.4 相同）— channel plugin 需設定才啟用，比預期安全。
+5. **記憶體大幅改善**：冷啟 cgroup memory **774 MiB**，對比 10.4 的 ~2.4 GB。呼應官方「回到 10.4 區間」宣稱。
+6. **回滾成本永久升高**：schema 已 25，之後任何回退都要「停機 + 還原兩個 DB + 清 sidecar」，
+   不再是改個 image tag 就好。完整程序已寫入 3.8。
+7. **雙重回滾保險**：本次的 2.3G 驗證備份 + doctor 自存的 pre-migration `.bak`。
