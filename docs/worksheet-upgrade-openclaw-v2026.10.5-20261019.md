@@ -289,16 +289,16 @@ extensions/memory-core/src/memory/manager-embedding-ops.ts
 - [x] `git log --merges 'upstream-v2026.10.5^{commit}'..HEAD` → **0** 個 merge commit
 - [x] `git diff 'upstream-v2026.10.5^{commit}' HEAD --stat -- ':!.github'` → 恰好 10 檔、+1545 / −62：
       `     Dockerfile                                                    |  46 ++
-    TODO-docker-build-rsync-utf8.md                               |  38 ++
-    assets/whisper                                                |  41 ++
-    docker/entrypoint-ssh.sh                                      |  32 ++
-    docs/worksheet-upgrade-openclaw-v2026.10.1-20261011.md        | 326 ++
-    docs/worksheet-upgrade-openclaw-v2026.10.2-20261012.md        | 111 ++
-    docs/worksheet-upgrade-openclaw-v2026.10.3-20261014.md        | 383 ++
-    docs/worksheet-upgrade-openclaw-v2026.10.4-20261017.md        | 489 ++
-    extensions/google/embedding-provider.ts                       | 139 ++---
-    extensions/memory-core/src/memory/manager-embedding-ops.ts     |   2 +-
-    `
+  TODO-docker-build-rsync-utf8.md                               |  38 ++
+  assets/whisper                                                |  41 ++
+  docker/entrypoint-ssh.sh                                      |  32 ++
+  docs/worksheet-upgrade-openclaw-v2026.10.1-20261011.md        | 326 ++
+  docs/worksheet-upgrade-openclaw-v2026.10.2-20261012.md        | 111 ++
+  docs/worksheet-upgrade-openclaw-v2026.10.3-20261014.md        | 383 ++
+  docs/worksheet-upgrade-openclaw-v2026.10.4-20261017.md        | 489 ++
+  extensions/google/embedding-provider.ts                       | 139 ++---
+  extensions/memory-core/src/memory/manager-embedding-ops.ts     |   2 +-
+  `
 
 > 與 10.4 升級時的 diff 形狀逐字一致 → 自訂層在 10.5 完全相容。
 
@@ -327,10 +327,10 @@ rsync dry-run 確認僅餘這 2 檔 + 2 個 runtime lock 檔（只差 timestamp�
 
 ### 2.6 Push 分支
 
-- [ ] `git push -u origin my-config-v2026.10.5`
-- [ ] 確認 `origin/my-config-v2026.10.5` == local HEAD
+- [x] `git push -u origin my-config-v2026.10.5`
+- [x] 確認 `origin/my-config-v2026.10.5` == local HEAD == `80331395d1a9ad0b708b6cc6f4b650a0befb0ca4`
 
-### 2.7 觸發 build（分支觸發模型）
+### 2.7 觸發 build（分支觸發模型）— ✅ 成功，未遇 422
 
 > [!IMPORTANT]
 > **不 force-push git tag。** `--ref` 指向分支、`-f tag` 命名 image，tag 不影響 build。
@@ -340,43 +340,41 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
   --ref my-config-v2026.10.5 -f tag=v2026.10.5 -f platforms=all
 ```
 
-- [ ] dispatch 回 `HTTP 204`
-- [ ] 🛑 **若為 `HTTP 422 "Actions has been disabled for this repository"`** → 停止重試，
-      開 `https://github.com/kuniakil/openclaw/actions`（**不是** `/settings/actions`）
-      點橫幅的重新啟用按鈕。**不要**改 repo 設定、**不要**清 Actions cache。
-- [ ] `gh run list --workflow=docker-release.yml --limit 1 --json databaseId,event,headBranch,headSha,status` - `event` = `workflow_dispatch` - `headBranch` = `my-config-v2026.10.5` - `headSha` = **我們的 commit**（絕非官方 `1b58cb9a1b4f`）
-- [ ] `gh run watch <run_id>` → 4 個 job 全綠（`prepare` / `build-and-push (amd64)` / `(arm64)` / `merge`）
-- [ ] 保留 GHA buildx cache（既定決策，不因 422 而關 `cache-to`）
+- [x] dispatch 成功（**無 422**，fork 的 Actions 未被用量啟發式停用）
+- [x] `gh run list --workflow=docker-release.yml --limit 1 --json databaseId,event,headBranch,headSha,status` - `event` = `workflow_dispatch` ✅ - `headBranch` = `my-config-v2026.10.5` ✅ - `headSha` = `80331395d1a9ad0b708b6cc6f4b650a0befb0ca4` ✅
+      （**我們的** commit，非官方 `1b58cb9a1b4f` — 已程式化比對確認）
+- [x] **Run ID：`39177048878`**
+- [x] `gh run watch` → **conclusion: success**，4 個 job 全綠（耗時 11m09s）：
+  ```
+  success  prepare                                        3s
+  success  build-and-push (linux/amd64)                   10m26s
+  success  build-and-push (linux/arm64)                   10m38s
+  success  merge                                         17s
+  ```
+- [x] 保留 GHA buildx cache（既定決策）
+- [x] Build Run：https://github.com/kuniakil/openclaw/actions/runs/39177048878
 
-### 2.8 Build 結果驗證
+### 2.8 Build 結果驗證 — 全部通過 ✅
 
-```bash
-for t in 2026.10.5 v2026.10.5 2026.10.5-slim latest main; do
-  docker buildx imagetools inspect ghcr.io/kuniakil/openclaw:$t >/dev/null 2>&1 \
-    && echo "$t OK" || echo "$t MISSING"
-done
-```
-
-- [ ] 5 個 tag 全部存在
-- [ ] 記錄 multi-arch digest 與 `linux/amd64` / `linux/arm64` 子 digest
+- [x] 5 個 tag 全部存在：`2026.10.5` ✅ `v2026.10.5` ✅ `2026.10.5-slim` ✅ `latest` ✅ `main` ✅
+- [x] **Multi-arch digest**：`sha256:faaa138d2b3efffa8e689431f66cf9224b232989f88f64a2515ed599800fddcf`
+  - `linux/amd64` → `sha256:96ad96909862a892ca0d2688b653c52ff8330d5653d6b59669b6274ae363575d`
+  - `linux/arm64` → `sha256:df18a59fbaa9632c682c2655d1f84c065dda2400d63ca908a2c51fb9bed714a9`
 
 ---
 
 ## Phase 3: 部署與驗證
 
-### 3.0 強制備份 🔴 MANDATORY（schema migration 導致不可回滾）
+### 3.0 強制備份 🔴 MANDATORY（schema migration 導致不可回滾）— ✅ 已於 2.4.1 完成
 
 > 因 `agent` schema 24 → 25，升級後 **無法** 用 `kubectl set image` 回滾到 10.4。
-> 這一步是唯一的安全網。
+> 這一步是唯一的安全網。**已完成並驗證**（詳見 2.4.1）。
 
-- [ ] 盤點既有備份：`du -sh /root/backup-openclaw-*` → 預期「無既有備份」
-- [ ] 建立本次備份
-  ```bash
-  ssh n100 "rsync -aH /data/services/openclaw/.openclaw/ /root/backup-openclaw-20261019/"
-  ssh n100 "du -sh /root/backup-openclaw-20261019"
-  ```
-- [ ] 記錄備份大小（預期 ~2.3G）與路徑
-- [ ] **向使用者回報新舊備份清單後才進行 3.1**
+- [x] 備份位置：`/home/kuniaki/backup-openclaw-20261019`（2.3G）
+      （非 SOP 寫的 `/root` — `kuniaki` 無法寫入 `/root`，且無法檢視其內容）
+- [x] 11 個 live SQLite 一致快照，`quick_check` 11/11 ok
+- [x] agent DB 快照 `integrity_check` = ok、`user_version = 24` → 對 10.4 是有效回滾目標
+- [x] 已向使用者回報備份位置、大小與已知缺口（2 個 root 舊 config 備份）
 
 ### 3.1 K3s 部署
 
@@ -390,8 +388,9 @@ done
 ### 3.2 Schema migration 與 plugin 載入驗證 ⭐ 本次重點
 
 - [ ] 啟動日誌確認 agent DB migration 成功、無 `doctor --fix` 需求
+- [ ] **agent DB `user_version` 已從 24 → 25**（migration 實際生效的證據）
 - [ ] **plugin 數 = 18**（10.4 是 17），且 **新增 `x`**
-- [ ] **每個 bundled plugin 都是 `active`、無因 Codex runtime < 2026.9.7 被拒**（breaking #2）
+- [ ] **每個 bundled plugin 都是 `active`**（Codex 門檻已於 2.0.1 確認不適用，此處只需看有無其他 admission 失敗）
 - [ ] **`x` plugin 處於未設定 / 未啟用狀態**（不應有對外監聽或 API 呼叫）
 - [ ] Gateway `ready`
 
