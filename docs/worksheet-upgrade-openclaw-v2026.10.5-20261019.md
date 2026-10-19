@@ -83,7 +83,7 @@
 
 | #   | 變更                                                                                                                                                                                                           | 影響                                                                                                                                             |
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | **Tool approval hooks** — 一般 hook 不能再改寫 trusted-inline-approved 的 tool 參數；轉換型 plugin 必須對最終參數另外申請 approval，否則呼叫被封鎖。migration 見 `docs/plugins/hooks/tool-policy.md` (#142700) | 🟡 我們**沒有自訂 hook**，隨容器升級的 bundled plugins 由官方維持合規。Phase 3 需確認工具審批流程未退化                                          |
+| 1   | **Tool approval hooks** — 一般 hook 不能再改寫 trusted-inline-approved 的 tool 參數；轉換型 plugin 必須對最終參數另外申請 approval，否則呼叫被封鎖。migration 見 `docs/plugins/hooks/tool-policy.md` (#142700) | ✅ **不適用** — `requireApproval` 必須由插件在 `before_tool_call` 回傳，本部署無自訂 hook。詳見 3.6.1                                            |
 | 2   | **Codex runtime compatibility** — plugin admission 拒絕低於 **2026.9.7** 的官方 Codex runtime，拒絕時仍可檢視但不會 import (#168930, #168748, #168749, #168977)                                                | 🟡 **需驗證**：我們的 agent 有 `codex-home/`（`state_5.sqlite` 等），若 Codex runtime < 2026.9.7 會被拒 → Phase 3.2 必須確認 plugin 數與載入狀態 |
 | 3   | **Sessions** — 允許對 session 定向發送而不授予 transcript 存取權 (#164444)                                                                                                                                     | 🟢 能力收窄，無破壞                                                                                                                              |
 | 4   | **Worker-local inference** — 新增原生 worker inference runtime，含 Gateway dispatch、client placement、必要的 worker policy / destination 檢查 (#158902 等 7 項)                                               | 🟢 我們未啟用 worker-local inference                                                                                                             |
@@ -193,7 +193,7 @@ extensions/memory-core/src/memory/manager-embedding-ops.ts
 | 自訂 patch      | 🟠 中     | 3 個 functional 檔案全與上游重疊；`manager-embedding-ops.ts` 是 1 行手動重貼，`embedding-provider.ts` 需逐行確認套接點     |
 | 行為相容性      | 🟠 中     | **不是** stability patch：新增 X channel plugin、hook tool-policy 行為變更、Codex runtime 版本門檻、worker-local inference |
 | Plugin          | 🟡 待確認 | 新增 `extensions/x` → 17 變 18 個 bundled plugin；Codex runtime < 2026.9.7 會被 admission 拒絕                             |
-| Hook 審批       | 🟡 待確認 | tool-policy 收緊（第 1 項 breaking）；我們無自訂 hook，但需確認實際審批未退化                                              |
+| Hook 審批       | 🟢 不適用 | 已查證：無內建敏感度分類器，`ask` 預設 off，本部署從未設定 approvals（詳見 3.6.1）。實際邊界為 `dmPolicy: pairing`         |
 | 模型目錄        | 🟢 無     | 僅 catalog 行為變化（推薦模型排序、新模型提前出現）；我們用 MiniMax，不受影響                                              |
 | Channel         | 🟢 低     | Telegram / Discord / WhatsApp / IRC / Slack 全是 bugfix                                                                    |
 | 部署中斷        | 🟢 低     | Pod restart 期間能力降低；過往 4 次升級都在 ~30s 內恢復                                                                    |
@@ -431,8 +431,8 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 ### 3.2.1 Plugin 載入驗證
 
 - [x] **17 plugins**，與 10.4 **完全相同**：`anthropic, canvas, cua-computer, device-pair,
-    file-transfer, geolocation, github, google, linux-node, memory-core, microsoft, ollama,
-    openai, talk-voice, tavily, telegram, xai`
+  file-transfer, geolocation, github, google, linux-node, memory-core, microsoft, ollama,
+  openai, talk-voice, tavily, telegram, xai`
 - [x] **`x` plugin 未載入** — 與原預期 18 個不同。該 channel plugin 需設定才啟用，
       未設定即不載入。**實務上比預期安全**（無新增對外通道）
 - [x] 無任何 admission 失敗（Codex 門檻已於 2.0.1 確認不適用）
@@ -467,12 +467,80 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 
 > 需真實 memory 索引流量才能驗證；待有實際 embedding 請求時補驗。
 
-### 3.6 端到端真實訊息往返（Telegram）
+### 3.6 端到端真實訊息往返（Telegram）— 已通過 ✅
 
 - [x] `openclaw sessions list` 可讀出 session 與歷史 → **sessions 恢復**
       （`agent:main:teleg...338761`，`39k/200k`，MiniMax-M2.5）
-- [ ] 收訊息 → 工具執行 → 多輪模型呼叫（全 200）→ 回覆送出（待使用者實測）
-- [ ] **確認 hook tool-policy 收緊後，工具審批仍正常運作**（breaking #1）
+- [x] 收訊息 → 多輪模型呼叫（全 200）→ 回覆送出：
+  ```
+  11:00:28  [telegram] Inbound message telegram:830338761 (direct, 10 chars)
+  11:00:54  [model-fetch] provider=minimax model=MiniMax-M3 status=200 elapsedMs=11155
+  11:01:13  [model-fetch] provider=minimax model=MiniMax-M3 status=200 elapsedMs=5074
+  11:01:22  [telegram] outbound send ok messageId=2638
+  ```
+- [x] `memory/dreaming/rem/2026-10-19.md` 存在 → **memory-core 在 migration 後確實恢復運作**
+      （它是升級初期第一個報錯的元件）
+
+#### 3.6.1 Tool approval 機制查證 ⭐ breaking #1 結案：**不適用，非 10.5 回歸**
+
+> [!IMPORTANT]
+> **開頭的自我診斷結論是錯的，勿沿用。**
+> 診斷報告觀察到「4 步敏感操作都沒觸發 approval gate」，並推論
+> 「10.5 可能壞了 / enforcement gate 沒接上 / breaking #1 未通過」。
+> 經查 10.5 原始碼，**觀察正確但推論反了：這是 by design，不是回歸。**
+
+**① OpenClaw 沒有內建的路徑敏感度分類器。** 兩套獨立機制，預設皆關：
+
+- **Plugin hooks**（`docs/plugins/hooks/tool-policy.md`）
+  `requireApproval` / `block` **必須由插件在 `before_tool_call` 回傳**。
+  本部署無自訂 hook → 該路徑根本不存在。
+- **Exec approvals**（`src/agents/exec-defaults.ts`）
+  無 approvals 檔案時，預設寫死為：
+  ```typescript
+  overrides: { security: defaultSecurity, ask: "off" }   // ← ask 預設關閉
+  ```
+
+**② 本部署從未設定過 exec approvals。**
+
+```
+/home/node/.openclaw/exec-approvals.json.migrated   (176 bytes, mtime Sep 1 08:48)
+  { "version": 1, "socket": { ... }, "defaults": {}, "agents": {} }
+                        ^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^
+                        空 → 無任何 ask 規則；且檔名帶 .migrated = 已改名遷移、不再載入
+```
+
+mtime **Sep 1**，遠早於本次升級 → **既有狀態，非 10.5 造成**。
+且即使當初仍在載入，`defaults` 與 `agents` 皆空，行為相同。
+
+**③ 該診斷的測試方法本身無效。**
+`execApprovals` 的 config 說明（`src/config/schema.channel-field-help.ts`）明寫：
+
+> "Approval prompts for commands that need operator sign-off, **delivered in this channel**."
+
+approval prompt 是**送給 channel 裡的營運者**，不回給 agent 行程。
+因此 agent 在自身工具輸出中永遠看不到 approval gate——
+**即使 gate 正常觸發且使用者已在 Telegram 點選同意，agent 也一樣看不到**。
+「未看到 prompt」無法區分「gate 不存在」與「gate 有觸發且已回覆」。
+
+**④ breaking #1 的實際適用範圍。**
+
+> 「ordinary hooks can no longer rewrite trusted-inline-approved tool arguments without another approval」
+
+此條僅在**有插件 hook 改寫參數**時才有意義。本部署無自訂 hook → **不適用**，
+而非「未通過」。
+
+**⑤ 實際安全邊界是 `dmPolicy`，不是 approval。**
+
+```
+telegram  { "dmPolicy": "pairing", "groupPolicy": "allowlist" }
+```
+
+`pairing` 是強設定：未配對使用者無法傳訊，approval 開與否都不影響該邊界。
+另外 `kubectl get secret` 被擋是 **K8s RBAC**（`agent-readonly-sa` 無 list secrets 權限），
+與 OpenClaw approval 是兩套獨立機制，不應混為一談。
+
+**結論：現況可接受，不需為此降級或改設定。** 診斷報告提出的 A/B/C/D 四個選項均不建議執行。
+若日後要啟用 exec approvals，需建立 `exec-approvals.json` 並在 `defaults` / `agents` 定義 ask 規則。
 
 ### 3.7 記憶體趨勢觀察
 
@@ -559,3 +627,39 @@ kubectl -n openclaw scale deploy/openclaw-gateway --replicas=1
 6. **回滾成本永久升高**：schema 已 25，之後任何回退都要「停機 + 還原兩個 DB + 清 sidecar」，
    不再是改個 image tag 就好。完整程序已寫入 3.8。
 7. **雙重回滾保險**：本次的 2.3G 驗證備份 + doctor 自存的 pre-migration `.bak`。
+8. **breaking #1 經查證為「不適用」而非「未通過」** — 無內建敏感度分類器，`ask` 預設 off，
+   本部署從未設定 approvals（`exec-approvals.json.migrated` 為空 + Sep 1 mtime）。
+   實際安全邊界是 `telegram.dmPolicy: pairing` 與 K8s RBAC，兩者均正常。詳見 3.6.1。
+
+---
+
+## ⚠️ 方法論教訓（下次務必先做）
+
+### 教訓 1：schemaVersions 變動 → `doctor --fix` 必須排進部署序列
+
+本次最大的計畫誤差。`assertCanonicalAgentPersistenceVersion`
+（`src/state/openclaw-agent-db-schema-read.ts:50`）是 **fail-closed 讀取守門員**，
+不會自動 migration。套用新 image 後 Gateway 活著但 **sessions 全部不可用**、
+cron 每分鐘失敗，症狀容易被誤認為「部署成功」。
+
+**正確順序：`kubectl scale --replicas=0` → `openclaw doctor --fix` → scale 回 1。**
+
+### 教訓 2：Agent 自我報告「安全機制沒觸發」不可信
+
+本次 agent 自行測試後回報「approval gate 未觸發」並推論升級損壞。實際上：
+
+- approval prompt 是**送給 channel 裡的營運者**，agent 永遠觀察不到自己觸發與否
+- 因此「未看到 prompt」**無法區分**「gate 不存在」與「gate 有觸發且已回覆」
+
+**遇到這類結論，先查原始碼 / 實際設定，不要採信推論。**
+
+### 教訓 3：自我健康檢查應附原始指令輸出
+
+本次報告有兩個數字無法交叉驗證：
+
+| 報告值                | 實測                              | 問題           |
+| --------------------- | --------------------------------- | -------------- |
+| Pod「~11 小時前啟動」 | **160m（2h40m）**，08:21:42 啟動  | 誤差 4 倍      |
+| Skills「9 個」        | workspace 2 + image 內 bundled 49 | 未說明計算基準 |
+
+若報告附上 `kubectl get pod -o wide` 原始輸出與技能數的計算方式，這些即可直接驗證。
