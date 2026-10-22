@@ -1,0 +1,407 @@
+# Upgrade Worksheet: openclaw → v2026.10.6
+
+**Date:** 2026-10-23
+**Current branch:** `my-config-v2026.10.5`（HEAD `0f98129a806`）
+**Target tag:** `v2026.10.6`（官方 SHA `fe06181dc5ecc01cf8904abbfc26925925efefbc`）
+**New branch:** `my-config-v2026.10.6`
+**Release:** https://github.com/openclaw/openclaw/releases/tag/v2026.10.6
+
+> [!IMPORTANT]
+>
+> ## 本次是「低風險修補版」— 與 10.5 完全不同，三個關鍵差異
+>
+> 1. **無 schema migration。** `openclaw.schemaVersions` 維持 **`state 20 / agent 25`**（10.6 未動）。
+>    → 不需要 `openclaw doctor --fix`；**回滾只要改 image tag**（10.5 與 10.6 都是 schema 25）。
+>    這與 10.4→10.5（agent 24→25、必須停機 + 還原 DB）完全不同。
+> 2. **Node runtime 下限提高（唯一實質 breaking）。**
+>    `engines.node`：`>=24.16.0 <25 || >=26.1.0` → **`>=24.22.1 <25 || >=26.12.1`**
+>    （#179992，2026-10 Node.js 安全釋出，拒絕被入侵憑證簽署的 TLS chain）。
+>    官方 Dockerfile base image 已改為 **`node:24.22.1-bookworm-slim`**（digest 已實查存在，含 amd64/arm64）。
+>    我們目前線上 2026.10.5 image 內的 Node 是 **v24.21.0 → 低於新下限**；
+>    換 10.6 image 後 Node = 24.22.1，**這正是本次升級要解決的事**。
+> 3. **無新增 bundled plugin / 無新對外通道。** `extensions/` 目錄無增減 →
+>    plugin 數維持 **17**（10.5 的 `x` plugin 仍未設定、未載入）。
+>
+> **pnpm 12.9.0 → 12.15.0**（`packageManager` 欄位；Docker build 內 `corepack` 自動取得，不需我們額外處理）。
+
+---
+
+> [!IMPORTANT]
+>
+> 1. **本地 `v2026.10.x` 都是自訂 tag**（含我們的 patch）。官方 baseline 已 fetch：
+>    - `refs/tags/upstream-v2026.10.5`（官方 10.5，SHA `1b58cb9a1b4f`）
+>    - `refs/tags/upstream-v2026.10.6`（官方 10.6，SHA `fe06181dc5e`）
+> 2. **不可用本地 `v2026.10.5` 當 diff base**。新分支必須從 `upstream-v2026.10.6` 開。
+> 3. **使用分支觸發模型**（承襲 10.3～10.5 決策），**不** force-push git tag。
+> 4. 禁止在 Mac 跑 `pnpm check:changed` / `tsgo` / `vitest` / `docker build`，一律交給 GitHub Actions。
+
+---
+
+## Phase 1: 分析結果
+
+### 1.1 官方 10.5 → 10.6 差異
+
+| 項目                                          | 10.5                          | 10.6                                | 備註                                                |
+| --------------------------------------------- | ----------------------------- | ----------------------------------- | --------------------------------------------------- |
+| `package.json` version                        | 2026.10.5                     | 2026.10.6                           |                                                     |
+| `openclaw.schemaVersions`                     | state 20 / agent 25           | **state 20 / agent 25（不變）**     | 🟢 **無 migration**，回滾 = 改 image tag            |
+| `engines.node`                                | `>=24.16.0 <25 \|\| >=26.1.0` | **`>=24.22.1 <25 \|\| >=26.12.1`**  | 🔴 **唯一實質 breaking**（Node 安全釋出）           |
+| `packageManager`                              | pnpm 12.9.0                   | pnpm 12.15.0                        | 🟢 corepack 自動取得                                |
+| Dockerfile base image（runtime）              | `node:24-bookworm-slim`       | `node:24.22.1-bookworm-slim`        | 🟡 官方有改動（見 1.4 ①）                           |
+| `extensions/` 新增目錄                        | —                             | **無**                              | 🟢 plugin 數維持 17                                 |
+| **變更規模**                                  | —                             | **1,669 files / +48,083 / −12,952** | 🟡 patch 版但 diff 仍不小（官方自述 focused fixes） |
+| `src/state/` 變更檔數                         | —                             | 42                                  | 🟡 但 schema 常數未動 → 不需 doctor                 |
+| `src/agents/` / `src/infra/` / `src/gateway/` | —                             | 151 / 106 / 80                      | 🟢 內部重構為主                                     |
+| `.github/workflows/` 變更                     | —                             | 72 檔                               | 🟢 全部 purge（見 1.4 ④）                           |
+| `pnpm-lock.yaml`                              | —                             | 有變動                              | 🟢 隨 build 自動安裝                                |
+
+### 1.2 官方 Release Notes 審查（v2026.10.6）
+
+官方定位：**"focused reliability fixes only; it does not introduce new user-facing features."**
+
+**Highlights（與我們相關者 ⭐）**：
+
+- **Patched Node runtime required**（#179992）— Docker image 內建 Node 24.22.1；installers 選用已修補的
+  runtime；`openclaw update` 在舊 Node 上會**拒絕執行並給恢復指引**，而不是把現有安裝弄壞；
+  source build 固定 pnpm 12.15.0。
+  → **對我們**：Docker 部署不受 `openclaw update` 路徑影響；但**升級後 Node 必須 ≥ 24.22.1**，
+  這由官方 base image 保證（見 Phase 3 驗收：容器內 `node --version` 必須 ≥ v24.22.1）。
+- **Safer updates and recovery**（#171101 等）— package swap 在不安全的 service 狀態下拒絕執行。
+  → 我們不走 package swap 路徑（image 部署），不適用。
+- **Data-preserving migrations and backups**（#172293 等）— Doctor / migration 拒絕 malformed 或
+  lossy 的 workspace import、保留 malformed Notes bytes、拒絕不安全的非 UTF-8 wiki 重寫、
+  保留巢狀 SQLite 備份、restore 檢查失敗時保留 staging 證據。
+  → 我們的 Doctor 流程是 read-only 檢查 + 必要時 `--fix`；10.5 已套用過一次 `--fix`，無待修項。
+- **Reliable delivery across restarts / Agent and tool-call recovery / Channel delivery correctness**
+  — queued turns、watched child results、dead-lettered deliveries、streamed replies 在重啟後不消失、
+  不重複；未完成 tool 會可見地逾時；Telegram album / dual-stack 回覆不丟不重。
+  → **與我們直接相關**：我們 10.5 升級後曾跑過 Telegram 實測（見 10.5 worksheet 3.6）。
+- **Provider and model resilience** — GPT-5.6 tool turns、OpenRouter DeepSeek tool calls、
+  LM Studio overflow recovery、並行 OpenAI reasoning 設定、model retry/fallback budgets 一致化。
+  → 我們主模型 MiniMax-M3（provider `minimax`），不受影響。
+- **Windows and mobile stability / macOS companion** — 與 K3s Docker 部署無關。
+
+**Fixes 中與我們相關者**：
+
+| 範圍                                | 內容                                                                                                                                                    | 對我們                                                                                      |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| **State and system-agent recovery** | 恢復被升級影響而「held」的 agents 存取權；schema 變更後恢復 held system-agent DB；forensic snapshot 失敗時保留 live config（#175007, #176783, #171217） | 🟢 **正是我們 10.5 經歷的狀況**（doctor --fix 後 agent 被 hold）→ 10.6 修的就是這個，值得升 |
+| **Doctor and managed plugins**      | 修復空白的 retired-plugin metadata、清除已解決的 migration warning、把 app-managed plugin 收斂到已安裝的核心版本（#173851 等）                          | 🟢 與我們的 17 個 bundled plugin 直接相關，屬正向                                           |
+| **SQLite correctness**              | warning handler 丟例外時仍保留 transaction outcome、shared-worker 拒絕後正確收尾 peer、retired cache generation 不再奪走 worker ownership               | 🟢 直接關係我們的 SQLite worker 架構                                                        |
+| **Worker and worktree recovery**    | 主機重開後回收 worker 容量、partial-clone worktree 修復缺失 objects                                                                                     | 🟡 我們有 worktree 使用（升級期間 agent 會用到）→ 正向                                      |
+| **Gateway lifecycle**               | 保留 restart custody、避免 stop-time lease 死鎖、重開後回收 worker 容量、reload 時保留 suppressed-channel 設定                                          | 🟢 正向                                                                                     |
+| **Codex and native sessions**       | 取消或清理失敗後釋放停滯的 startup waits 與已完成 subagents                                                                                             | 🟢 正向                                                                                     |
+| **Media and TTS**                   | 慢速 hosted speech synthesis 逾時、回報 playback cache / probe / quota 失敗而非靜默丟棄清理錯誤                                                         | 🟢 與我們自訂 whisper / edge-tts 層相關（edge-tts 正是 hosted TTS）                         |
+
+**Deprecations**：changelog 未列 blocking deprecation。
+
+**Breaking Changes 總結（官方角度）**：
+
+1. 🔴 **Node 下限 `24.22.1` / `26.12.1`**（唯一實質 breaking）。
+2. 其餘為修補，無 schema 變更、無設定移除、無 API 移除。
+
+**已知 Caveats（10.5 遺留、本次要觀察的）**：
+
+- 10.5 的 doctor `--fix` 在 agent DB 留下「held」狀態 → 10.6 修 #175007/#176783。升級後必須確認
+  agent 存取恢復正常（Phase 3.2）。
+- 10.5 遗留未驗證項：**Gemini embedding rate pacing 實機驗證**、**記憶體長期趨勢**（延續到本次觀察）。
+
+### 1.3 自訂 patch 清單（`my-config-v2026.10.5` 內）
+
+| Commit                            | 檔案                                                                                                                  | 內容                                                                                                                               |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `315e33ba7f7`                     | `.github/workflows/*`（112 檔 → 只留 1 檔）                                                                           | 刪除官方 workflows、覆蓋 `docker-release.yml` 為 Matrix 版（191 行）                                                               |
+| `534e0741e91`（源 `64ce0d05c9e`） | `Dockerfile`（+46）、`extensions/google/embedding-provider.ts`、`extensions/memory-core/.../manager-embedding-ops.ts` | 自訂層（locale / rsync / faster-whisper / edge-tts / ffmpeg / openssh-server）+ Gemini Free Tier rate pacing + gemini 索引併發鎖 1 |
+| `1b50e15d690`（源 `884f17a1fe1`） | `assets/whisper`、`docker/entrypoint-ssh.sh`、`TODO-docker-build-rsync-utf8.md`                                       | 自訂資產（0755）                                                                                                                   |
+| 21 個 docs commits                | `docs/worksheet-upgrade-openclaw-*.md`                                                                                | 保留 10.1～10.5 升級歷史                                                                                                           |
+
+### 1.4 衝突交叉比對 —— 🟢 本次是乾淨升級
+
+```bash
+comm -12 <(git diff --name-only upstream-v2026.10.5..my-config-v2026.10.5 | grep -v '^\.github/workflows/' | sort -u) \
+         <(git diff --name-only upstream-v2026.10.5 upstream-v2026.10.6 | sort -u)
+```
+
+**結果（1 個檔案）：**
+
+```
+Dockerfile
+```
+
+（對比 10.5 的 3 檔、10.4 的 0 檔。**我們兩個自訂功能檔案
+`extensions/google/embedding-provider.ts`、`extensions/memory-core/.../manager-embedding-ops.ts`
+在 10.5→10.6 完全未被上游改動 → 零風險直接帶過。**）
+
+#### ① `Dockerfile` —— 🟢 預期零衝突（但必須驗證）
+
+上游 10.6 對 Dockerfile 只有 **2 個 hunk**：
+
+```
+@@ -13,9 +13,9 @@   base image ARGs：node:24-bookworm → node:24.22.1-bookworm（含 digest）
+@@ -230,7 +230,7 @@ runtime base LABEL：org.opencontainers.image.base.name
+```
+
+我們的自訂層是**檔尾追加**（anchor 在 `install -d -m 0755 -o node -g node /home/node/.config …` 之後），
+自訂段落行號 439 / 458 / 474 / 478，全部位於 `ENV NODE_ENV=production`（486）之前。
+
+- **處置**：正常 cherry-pick；若因行號位移報 conflict，確認 4 個 `# Custom:` 段落仍接在
+  `ENV NODE_ENV=production` 之前、且 base image ARG 是 `node:24.22.1-bookworm*` 即可。
+- **注意**：我們的 apt / pip 自訂層在 runtime stage（`node:24.22.1-bookworm-slim`，同為 Debian bookworm）
+  上執行 → distro 不變，套件來源不變，**無需改動**。
+
+#### ② `extensions/google/embedding-provider.ts` —— 🟢 上游未改，零風險
+
+10.5→10.6 上游**完全沒有**改這個檔 → 我們的 Gemini rate pacing
+（`geminiEmbeddingQueue` / `MIN_GEMINI_EMBEDDING_INTERVAL_MS = 4200` / `executePaced`）原樣保留。
+**驗收**：`grep -n 'geminiEmbeddingQueue\|MIN_GEMINI_EMBEDDING_INTERVAL_MS'` 有命中。
+
+#### ③ `extensions/memory-core/src/memory/manager-embedding-ops.ts` —— 🟢 上游未改，零風險
+
+上游**完全沒有**改這個檔 → 我們那 1 行 `provider?.id === "gemini" ? 1 : ...` 原樣保留。
+**驗收**：diff 對基線仍為剛好 1 行。
+
+#### ④ `.github/workflows/` —— 🟢 按 SOP purge 重建
+
+上游 10.6 改了 **72 個** workflow（含 `ci.yml`、`docker-release.yml` 等）。
+**全部 purge**，用 `my-config-v2026.10.5` 的 Matrix 版覆蓋 `docker-release.yml`，**不 merge 官方變更**。
+
+### 1.5 風險評估：**低**（10.1～10.5 中最低）
+
+| 風險類型        | 等級      | 原因                                                                                        |
+| --------------- | --------- | ------------------------------------------------------------------------------------------- |
+| **Schema 中斷** | 🟢 **無** | `state 20 / agent 25` 未變 → 不需 doctor、不需停機 migration、**回滾 = 改 image tag**       |
+| **Node 下限**   | 🟠 中     | base image 換成 `node:24.22.1-bookworm-slim`；我們自訂 apt/pip 層要重新 build（由 CI 做）   |
+| 自訂 patch      | 🟢 低     | 交集只有 `Dockerfile`，且上游改動在檔頭、我們改動在檔尾 → 預期零衝突                        |
+| 行為相容性      | 🟢 低     | 官方定位為 focused reliability fixes；無新 plugin、無新通道、無設定移除                     |
+| Plugin          | 🟢 低     | `extensions/` 無新增目錄 → plugin 數維持 17（`x` 仍未設定、未載入）                         |
+| 模型目錄        | 🟢 無     | 僅 provider/model resilience 修補；我們用 MiniMax-M3                                        |
+| Channel         | 🟢 低     | Telegram / Discord / WhatsApp / Slack 全為 bugfix（album、dual-stack 回覆、relay recovery） |
+| 部署中斷        | 🟢 低     | 單 pod rollout，過往 5 次升級皆在 ~30s 內恢復                                               |
+
+---
+
+## Phase 2: 執行步驟
+
+### 2.0 前置檢查
+
+- [x] `git status -sb` → `## my-config-v2026.10.5...origin/my-config-v2026.10.5`（工作區乾淨，僅本次 worksheet 為未追蹤檔）
+- [x] 官方 baseline tag 已 fetch
+  ```bash
+  git fetch upstream refs/tags/v2026.10.6:refs/tags/upstream-v2026.10.6 --no-tags
+  git rev-parse 'upstream-v2026.10.6^{commit}'
+  # fe06181dc5ecc01cf8904abbfc26925925efefbc
+  ```
+- [x] `schemaVersions` 對比：`10.5 {state:20, agent:25}` == `10.6 {state:20, agent:25}` → **無 migration**
+- [x] `engines.node` 對比：`>=24.16.0…` → `>=24.22.1…`（唯一 breaking）
+- [x] base image digest 實查可用：
+      `docker buildx imagetools inspect node:24.22.1-bookworm-slim@sha256:55fb5f5a…` → OK（amd64 + arm64）
+- [x] K3s 現況盤點（`ssh n100`）
+  ```
+  openclaw-gateway-697b89c68f-cfbjw   1/1   Running   0   3d15h
+  ghcr.io/kuniakil/openclaw:2026.10.5
+  容器內 node --version → v24.21.0   （低於 10.6 要求的 24.22.1）
+  ```
+- [x] 確認 10.5 的 2.3G 備份**已被清除**（`/home/kuniaki/backup-openclaw-*` 不存在；
+      依 10.3 以來的 lifecycle policy，驗證後即清除）→ 本次需重新備份
+
+### 2.1 建立新分支（從 upstream 10.6 基線）
+
+- [x] `git checkout -b my-config-v2026.10.6 'upstream-v2026.10.6^{commit}'`
+- [x] HEAD = `fe06181dc5e`
+- [x] `package.json` version = `2026.10.6`、`schemaVersions` = `{'state': 20, 'agent': 25}`、`engines.node` = `>=24.22.1 <25 || >=26.12.1`
+
+### 2.2 Purge 官方 workflows 並覆蓋 Matrix `docker-release.yml`
+
+- [x] `find .github/workflows -type f ! -name 'docker-release.yml' -delete`（官方 114 個 workflow → 1）
+- [x] `git checkout my-config-v2026.10.5 -- .github/workflows/docker-release.yml`
+- [x] commit `0de187fba83`（114 files changed, +149 / −65,639）
+- [x] 驗證：官方 workflow 全刪 → 僅剩 `docker-release.yml`（**191 行** Matrix 版）
+- [x] 驗證：`on:` 只有 `workflow_dispatch`、input 名稱 = **`tag`**、`platforms` 預設 `all`（**不是** `tag_name`）
+
+### 2.3 Cherry-pick 自訂 commits（保留線性歷史）
+
+- [x] `git cherry-pick -x 64ce0d05c9e` → `a586fa6afdc`：**零衝突**（3 files, +125 / −62）
+- [x] `git cherry-pick -x 884f17a1fe1` → `678a32fdcd1`：**零衝突**（3 files, +111；whisper 0755 / entrypoint-ssh.sh 0755）
+- [x] 帶過 `my-config-v2026.10.5` 的 **21 個純 docs commits**（`0c7c94a1068..0f98129a806` 整段），
+      全部只動 `docs/worksheet-upgrade-openclaw-*.md`，保留 10.1～10.5 升級歷史
+- [x] 線性歷史：**0 merge commit**
+
+### 2.4 輕量本地驗證（無重型 CI）
+
+- [x] `git diff 'upstream-v2026.10.6^{commit}' HEAD --stat -- Dockerfile` → **+46 / −0**（純附加）
+- [x] 4 個 `# Custom:` 段落仍在 `ENV NODE_ENV=production`（486）**之前**（439 / 458 / 474 / 478）
+- [x] base image ARG 已為 `node:24.22.1-bookworm*`（上游值，未被我們覆寫；line 16/17/18）
+- [x] `grep -n 'geminiEmbeddingQueue\|MIN_GEMINI_EMBEDDING_INTERVAL_MS'` → 有命中（218 / 219 / 227 / 295-303）；
+      上游 HTTP 路徑 `executeWithApiKeyRotation`（228）、`withRemoteHttpResponse`（238）、`ssrfPolicy`（240）皆存活
+- [x] `manager-embedding-ops.ts` 對基線 diff 仍為 **1 行**（line 527，`|| provider?.id === "gemini"`）
+- [x] `assets/whisper` / `docker/entrypoint-ssh.sh` → `-rwxr-xr-x`
+- [x] `git log --merges 'upstream-v2026.10.6^{commit}'..HEAD` → **0**
+- [x] `git diff 'upstream-v2026.10.6^{commit}' HEAD --stat -- ':!.github'` → 恰好 11 檔、+2251 / −62
+      （與 10.5 升級時同形狀：Dockerfile 46 + TODO 38 + assets 41 + entrypoint 32 + 5 份 worksheet + 2 個功能檔）
+
+### 2.4.1 備份（本次為「建議」而非「強制」）
+
+> 無 schema 變更 → 回滾路徑 = 改 image tag，不依賴備份。但 DB 已有 215MB 活躍寫入，
+> 仍做一次輕量線上快照作保險。
+
+- [ ] ~~`sqlite3 .backup`~~ → **改用容器內 `node:sqlite` 的 `backup()`**。
+      原因：容器與主機都**沒有 `sqlite3` CLI**；容器內 `python3` 的 SQLite 是 3.40.1，
+      對 agent DB 觸發 `unknown function: octet_length()` 而失敗。
+      容器 Node 24 內建 `node:sqlite`（`backup()` API）→ 可用且支援新版 SQLite。
+- [x] 取得 **7 個 live SQLite** 一致快照（線上備份 API，處理 WAL）
+- [x] **7/7 快照 `PRAGMA quick_check` = ok**
+- [x] 快照 `user_version`：agent = **25** / state = **20**（與線上一致 → 確認無待 migration）
+- [x] 存放於 `/home/kuniaki/backup-openclaw-20261023`（**869M**：`db/` 232M + config + workspace）
+- [x] 其餘 runtime 檔（openclaw.json、last-good、config-journal-fingerprint.key、credentials、identity、
+      devices、plugin-state、plugins、skills、memory、state、workspace）以 `cp -a` 帶走
+- [x] 排除協調鎖 DB（`generation-lock` / `generation-writer` / `reindex-lock`）與 `workspace/worktrees`
+
+### 2.5 更新本 worksheet 並 commit
+
+- [ ] `git add docs/worksheet-upgrade-openclaw-v2026.10.6-20261023.md` + commit
+
+### 2.6 Push 分支
+
+- [ ] `git push -u origin my-config-v2026.10.6`
+- [ ] 確認 `origin/my-config-v2026.10.6` == local HEAD
+
+### 2.7 觸發 build（分支觸發模型）
+
+> [!IMPORTANT]
+> **不 force-push git tag。** `--ref` 指向分支、`-f tag` 命名 image，tag 不影響 build。
+
+```bash
+gh workflow run docker-release.yml --repo kuniakil/openclaw \
+  --ref my-config-v2026.10.6 -f tag=v2026.10.6 -f platforms=all
+```
+
+- [ ] dispatch 成功（若遇 `HTTP 422 "Actions has been disabled for this repository"` → 見 SOP Hard Rule 8：
+      到 `https://github.com/kuniakil/openclaw/actions` 點 banner 重新啟用，**不要**清 cache / 改 settings）
+- [ ] `gh run list --workflow=docker-release.yml --limit 1 --json databaseId,event,headBranch,headSha,status`
+  - `event` = `workflow_dispatch` ✅
+  - `headBranch` = `my-config-v2026.10.6` ✅
+  - `headSha` = **我們的** commit（非官方 `fe06181dc5e`）✅
+- [ ] `gh run watch <run_id>` → conclusion: success（4 個 job 全綠）
+
+### 2.8 Build 結果驗證
+
+- [ ] 5 個 tag 全部存在：`2026.10.6` ✅ `v2026.10.6` ✅ `2026.10.6-slim` ✅ `latest` ✅ `main` ✅
+- [ ] 記錄 multi-arch digest 與 amd64 / arm64 子 digest
+
+---
+
+## Phase 3: 部署與驗證
+
+### 3.0 備份（已完成於 2.4.1）
+
+- [ ] 備份位置：`/home/kuniaki/backup-openclaw-20261023`
+- [ ] 快照 `quick_check` = ok、`user_version` = agent 25 / state 20
+
+### 3.1 K3s 部署
+
+- [ ] **由 Mac 編輯** `~/kubernetes/openclaw/overlays/n100/kustomization.yaml`：`2026.10.5` → `2026.10.6`
+      （Mac 為唯一編輯來源；N100 只部署不改 manifest，見 10.5 worksheet 3.1.1 / 3.9）
+- [ ] `kubectl kustomize` 預覽確認產出 `ghcr.io/kuniakil/openclaw:2026.10.6`（**先預覽再套用**）
+- [ ] `kubectl apply -k` → rollout status → 新 Pod `1/1 Running`、`RESTARTS 0`
+- [ ] `~/kubernetes` commit + push 到 `my-k8s`；N100 用 rsync 鏡像同步
+      （`rsync -a --delete --exclude='hermes/overlays/n100/secrets.env' ~/kubernetes/ n100:~/kubernetes/`）
+
+### 3.2 無 migration 驗證（本次與 10.5 最大的流程差異）
+
+> **不需 `doctor --fix`。** 但仍要確認「沒有待修項」與「agent 存取正常」。
+
+- [ ] 啟動 log **無** `agent database remains degraded` / `MigrationRequired` / `schema version`
+- [ ] 啟動 log **無** `cron/maintenance` 失敗
+- [ ] 啟動 log **無** `memory-core: dreaming startup cleanup failed`
+- [ ] `openclaw doctor`（read-only）→ **Doctor complete，無 error 級項目**
+- [ ] 線上 agent DB `user_version` 仍 = **25**、state DB = **20**（未被升級改寫）
+- [ ] agent DB `quick_check` = ok
+
+### 3.2.1 Plugin 載入驗證
+
+- [ ] **17 plugins**，與 10.5 相同：`anthropic, canvas, cua-computer, device-pair, file-transfer,
+    geolocation, github, google, linux-node, memory-core, microsoft, ollama, openai, talk-voice,
+    tavily, telegram, xai`
+- [ ] `x` plugin **未載入**（未設定即不啟用，與 10.5 一致）
+- [ ] 無 admission 失敗（Codex 門檻 10.5 已結案為不適用）
+
+### 3.3 運行版本
+
+- [ ] 容器內 `/app/package.json` → `2026.10.6`
+- [ ] `openclaw --version` → `OpenClaw 2026.10.6`
+- [ ] **`node --version` → v24.22.1 或以上**（🔴 本次核心驗收點；低於此值代表 base image 未生效）
+- [ ] `/health` → **200**
+- [ ] Pod `1/1 Running`、`RESTARTS 0`、image digest 與 2.8 一致
+
+### 3.4 自訂功能存活（Node base image 換版後必須重驗）
+
+- [ ] `locale -a` → `C.utf8` / **`en_US.utf8`** / **`zh_TW.utf8`**
+- [ ] `whisper` → `/usr/local/bin/whisper`；`faster_whisper.__version__` = 1.2.1
+- [ ] `edge-tts` → `/usr/local/bin/edge-tts`；`edge_tts.__version__` = 7.3.1
+- [ ] `ffmpeg` → `/usr/bin/ffmpeg`
+- [ ] `rsync` → `/usr/bin/rsync`
+- [ ] `sshd` → `/usr/sbin/sshd` 存在且 listener 運行中
+- [ ] `/app/docker/entrypoint-ssh.sh` → executable
+- [ ] Doctor 仍偵測到自訂層：`Local STT auto-selection: whisper`
+
+### 3.5 Gemini rate pacing（延續 10.5 未驗證項）
+
+- [ ] 觸發 memory embedding 索引，確認**無 429**
+- [ ] `gemini` provider 索引併發 = 1（我們的 1 行 patch 生效）
+- [ ] 請求間隔符合 ~4.2 s pacing
+
+### 3.6 端到端真實訊息往返（Telegram）
+
+- [ ] `openclaw sessions list` 可讀出 session 與歷史 → **sessions 正常**
+- [ ] 收訊息 → 多輪模型呼叫（全 200）→ 回覆送出
+- [ ] `memory/dreaming/rem/<date>.md` 產生 → memory-core 運作正常
+- [ ] 確認 **10.6 修的 agent-held 存取問題已解**（#175007 / #176783）：agent 不再處於 held 狀態
+
+### 3.7 記憶體趨勢觀察（延續 10.5 未驗證項）
+
+- [ ] 冷啟動後 cgroup memory 量測，與 10.5 的 **774 MiB** 對照
+- [ ] 採**趨勢**判斷，不以單次 `rss_threshold` 警告升級為事故
+
+### 3.8 回滾備案（本次可單純改 image tag 🟢）
+
+```bash
+kubectl -n openclaw set image deployment/openclaw-gateway \
+  gateway=ghcr.io/kuniakil/openclaw:2026.10.5
+kubectl -n openclaw rollout status deploy/openclaw-gateway
+```
+
+- [ ] 確認回滾路徑有效（10.5 與 10.6 同為 schema 25 → **不需要**還原 DB、不需要 doctor）
+- [ ] 若需還原 DB（罕見）：參考 10.5 worksheet 3.8 的還原流程
+
+### 3.9 收尾 — k8s 三端同步
+
+- [ ] Mac commit + push 到 `my-k8s` main
+- [ ] N100 rsync 鏡像同步，三端一致
+- [ ] 備份保留 7 天後清理（依既定 lifecycle policy）
+
+---
+
+## 🔖 關鍵參考
+
+- **官方 Release Notes:** https://github.com/openclaw/openclaw/releases/tag/v2026.10.6
+- **官方 Changelog:** https://raw.githubusercontent.com/openclaw/openclaw/v2026.10.6/CHANGELOG/2026.10.6.md
+- **官方 release SHA:** `fe06181dc5ecc01cf8904abbfc26925925efefbc`
+- **Node 安全釋出:** Node 24.22.1 / 26.12.1（#179992）
+- **Schema contract:** `src/state/openclaw-agent-db-contract.ts`（`OPENCLAW_AGENT_SCHEMA_VERSION = 25`）、`src/state/openclaw-state-db-contract.ts`（`OPENCLAW_STATE_SCHEMA_VERSION = 20`）
+- **Image:** `ghcr.io/kuniakil/openclaw:2026.10.6`
+- **K3s 部署:** `~/kubernetes/openclaw/overlays/n100/`
+- **資料路徑:** `/data/services/openclaw/.openclaw/`（`/home/kuniaki/openclaw` 為其 symlink）
+- **SOP 來源:** `~/.pi/agent/skills/agent-release-upgrade/SKILL.md`、`~/.pi/agent/skills/docker-image-rebuild/SKILL.md`
+- **上一版 worksheet:** `docs/worksheet-upgrade-openclaw-v2026.10.5-20261019.md`
+
+---
+
+## 📌 本次升級特色
+
+1. **最簡單的一次**：無 schema migration、無新 plugin、無設定變更 → 回滾只要改 image tag。
+2. **唯一實質 breaking 是 Node 下限**（24.22.1）。我們線上 10.5 的 Node 是 24.21.0，
+   正好低於新下限 → 這次升級同時修掉一個 TLS 安全曝露面。
+3. **衝突面最小**：交集只有 `Dockerfile`，且上游動檔頭、我們動檔尾 → 預期零衝突。
+4. **升級方向正確**：10.6 修的正是 10.5 升級過程中我們遇到的「agent 被 hold、migration warning 殘留、
+   SQLite worker 歸還」類問題 → 對我們的 K3s 部署是正向收益。
+5. **延續未結案項**：Gemini rate pacing 實機驗證、記憶體長期趨勢（自 10.5 帶過）。
