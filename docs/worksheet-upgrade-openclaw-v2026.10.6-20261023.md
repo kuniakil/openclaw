@@ -485,6 +485,8 @@ kubectl -n openclaw rollout status deploy/openclaw-gateway
 - [x] Mac commit + push 到 `my-k8s` main
 - [x] N100 rsync 鏡像同步，三端一致（Mac manifest / N100 manifest / 線上 Pod 皆為 2026.10.6）
 - [ ] 備份保留 7 天後清理（依既定 lifecycle policy；`backup-openclaw-20261023` 於 2026-10-30 到期）
+      → **但只刪 A 層**；B 層（`tmp/cache-restore-20261023/` 435M）與 C 層（pre-migration bak 241M）
+      需等「記憶體索引連續 3 天穩定」才刪，詳見下方 4.4
 
 ---
 
@@ -561,3 +563,28 @@ kubectl -n openclaw rollout status deploy/openclaw-gateway
   3. **3.8 回滾路徑實演**（本次未回滾，僅保留路徑）
   4. **3.9 備份 7 天 lifecycle**（`backup-openclaw-20261023` 於 2026-10-30 清理）
   5. **跨行程限速技術債**（`geminiEmbeddingQueue` 為 module 層級狀態；根治需 lock file / SQLite 協調或改走 Gateway RPC）
+
+### 4.4 備份盤點與保留期限（2026-10-23 收工時）
+
+**本次留下的三層（全在 N100，原封未動）**
+
+| 層                          | 路徑                                                                                                                     | 內容                                                                                                                        | 大小 | 期限                    |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- | ---- | ----------------------- |
+| A. 升級前完整快照           | `/home/kuniaki/backup-openclaw-20261023`                                                                                 | `db/` 232M（agent 225M + codex-home）、`state/` 76M、`workspace/` 547M、`memory/` 15M、config/credentials/skills/plugins 等 | 869M | **2026-10-30 清理**     |
+| B. 搶救回滾點               | `/data/services/openclaw/.openclaw/tmp/cache-restore-20261023/`                                                          | `agent-before-cache-restore.sqlite` 217M、`agent-before-index-restore.sqlite` 217M、restore/verify 腳本                     | 435M | **索引連續 3 天穩定後** |
+| C. Doctor pre-migration bak | `agents/main/agent/…pre-startup-migration-<uuid>.bak` 225M、`state/…pre-startup-migration-<uuid>.bak` 16M（10-19 08:20） | 記憶體索引與 cache 的**唯一還原來源**                                                                                       | 241M | **索引連續 3 天穩定後** |
+
+**前次升級備份：皆已清除，只剩本次**
+
+| 升級     | 路徑                                         | 大小     | 狀況                           |
+| -------- | -------------------------------------------- | -------- | ------------------------------ |
+| 10.2     | `/root/backup-openclaw-20261012`             | 17G      | ✅ 10.3 收尾刪除               |
+| 10.3     | `/root/backup-openclaw-20261014`             | 17G      | ✅ 10.3 收尾刪除（共回收 34G） |
+| 10.4     | —                                            | —        | ✅ 盤點無殘留                  |
+| 10.5     | `/home/kuniaki/backup-openclaw-20261019`     | 2.3G     | ✅ 10.6 升級前確認已清除       |
+| **10.6** | **`/home/kuniaki/backup-openclaw-20261023`** | **869M** | **現行**                       |
+
+- `ls -d /home/kuniaki/backup-openclaw-*` → 只有 `20261023` ✅
+- `/root` 需 root traverse（`kuniaki` 無 passwordless sudo）→ 10.2 / 10.3 的狀態只能依 worksheet 記錄；
+  實查指令：`sudo ls -d /root/backup-openclaw-*`（勿再把「看不到 /root」當成「沒有備份」）
+- 磁碟：`/` 1.8T 已用 554G（32%）；三層合計約 1.5G
