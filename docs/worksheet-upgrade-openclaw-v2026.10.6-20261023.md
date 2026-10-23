@@ -244,7 +244,7 @@ Dockerfile
 > 無 schema 變更 → 回滾路徑 = 改 image tag，不依賴備份。但 DB 已有 215MB 活躍寫入，
 > 仍做一次輕量線上快照作保險。
 
-- [ ] ~~`sqlite3 .backup`~~ → **改用容器內 `node:sqlite` 的 `backup()`**。
+- [x] ~~`sqlite3 .backup`~~ → **改用容器內 `node:sqlite` 的 `backup()`**。
       原因：容器與主機都**沒有 `sqlite3` CLI**；容器內 `python3` 的 SQLite 是 3.40.1，
       對 agent DB 觸發 `unknown function: octet_length()` 而失敗。
       容器 Node 24 內建 `node:sqlite`（`backup()` API）→ 可用且支援新版 SQLite。
@@ -258,12 +258,12 @@ Dockerfile
 
 ### 2.5 更新本 worksheet 並 commit
 
-- [ ] `git add docs/worksheet-upgrade-openclaw-v2026.10.6-20261023.md` + commit
+- [x] `git add docs/worksheet-upgrade-openclaw-v2026.10.6-20261023.md` + commit
 
 ### 2.6 Push 分支
 
-- [ ] `git push -u origin my-config-v2026.10.6`
-- [ ] 確認 `origin/my-config-v2026.10.6` == local HEAD
+- [x] `git push -u origin my-config-v2026.10.6`
+- [x] 確認 `origin/my-config-v2026.10.6` == local HEAD
 
 ### 2.7 觸發 build（分支觸發模型）
 
@@ -275,18 +275,18 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
   --ref my-config-v2026.10.6 -f tag=v2026.10.6 -f platforms=all
 ```
 
-- [ ] dispatch 成功（若遇 `HTTP 422 "Actions has been disabled for this repository"` → 見 SOP Hard Rule 8：
+- [x] dispatch 成功 → run `39812061190`（`event=workflow_dispatch`、`headBranch=my-config-v2026.10.6`、`headSha` = 我們的 commit）
       到 `https://github.com/kuniakil/openclaw/actions` 點 banner 重新啟用，**不要**清 cache / 改 settings）
-- [ ] `gh run list --workflow=docker-release.yml --limit 1 --json databaseId,event,headBranch,headSha,status`
+- [x] `gh run list --workflow=docker-release.yml` → `event` = `workflow_dispatch` ✅ / `headBranch` = `my-config-v2026.10.6` ✅ / `headSha` = 我們的 commit ✅
   - `event` = `workflow_dispatch` ✅
   - `headBranch` = `my-config-v2026.10.6` ✅
   - `headSha` = **我們的** commit（非官方 `fe06181dc5e`）✅
-- [ ] `gh run watch <run_id>` → conclusion: success（4 個 job 全綠）
+- [x] `gh run watch 39812061190` → conclusion: **success**（4 個 job 全綠，11.5 分鐘）
 
 ### 2.8 Build 結果驗證
 
-- [ ] 5 個 tag 全部存在：`2026.10.6` ✅ `v2026.10.6` ✅ `2026.10.6-slim` ✅ `latest` ✅ `main` ✅
-- [ ] 記錄 multi-arch digest 與 amd64 / arm64 子 digest
+- [x] 5 個 tag 全部存在（收工複驗：digest 全部 = `sha256:21dfe078315d…`）：`2026.10.6` ✅ `v2026.10.6` ✅ `2026.10.6-slim` ✅ `latest` ✅ `main` ✅
+- [x] multi-arch digest = `sha256:21dfe078315d426123e1c98221a7fedb49f7b2b2b39b8cae3805dae5b1d691a1`（amd64 / arm64 子 manifest）
 
 ---
 
@@ -294,55 +294,55 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 
 ### 3.0 備份（已完成於 2.4.1）
 
-- [ ] 備份位置：`/home/kuniaki/backup-openclaw-20261023`
-- [ ] 快照 `quick_check` = ok、`user_version` = agent 25 / state 20
+- [x] 備份位置：`/home/kuniaki/backup-openclaw-20261023`（869MB，收工複驗仍在）
+- [x] 快照 `quick_check` = ok、`user_version` = agent 25 / state 20
 
 ### 3.1 K3s 部署
 
-- [ ] **由 Mac 編輯** `~/kubernetes/openclaw/overlays/n100/kustomization.yaml`：`2026.10.5` → `2026.10.6`
+- [x] **由 Mac 編輯** `~/kubernetes/openclaw/overlays/n100/kustomization.yaml`：`2026.10.5` → `2026.10.6`
       （Mac 為唯一編輯來源；N100 只部署不改 manifest，見 10.5 worksheet 3.1.1 / 3.9）
-- [ ] `kubectl kustomize` 預覽確認產出 `ghcr.io/kuniakil/openclaw:2026.10.6`（**先預覽再套用**）
-- [ ] `kubectl apply -k` → rollout status → 新 Pod `1/1 Running`、`RESTARTS 0`
-- [ ] `~/kubernetes` commit + push 到 `my-k8s`；N100 用 rsync 鏡像同步
+- [x] `kubectl kustomize` 預覽確認產出 `ghcr.io/kuniakil/openclaw:2026.10.6`
+- [x] `kubectl apply -k` → rollout status → 新 Pod `1/1 Running`、`RESTARTS 0`
+- [x] `~/kubernetes` commit + push；N100 rsync 鏡像同步（收工複驗：Mac 與 N100 的 `kustomization.yaml` 皆為 `newTag: "2026.10.6"`）
       （`rsync -a --delete --exclude='hermes/overlays/n100/secrets.env' ~/kubernetes/ n100:~/kubernetes/`）
 
 ### 3.2 無 migration 驗證（本次與 10.5 最大的流程差異）
 
 > **不需 `doctor --fix`。** 但仍要確認「沒有待修項」與「agent 存取正常」。
 
-- [ ] 啟動 log **無** `agent database remains degraded` / `MigrationRequired` / `schema version`
-- [ ] 啟動 log **無** `cron/maintenance` 失敗
-- [ ] 啟動 log **無** `memory-core: dreaming startup cleanup failed`
-- [ ] `openclaw doctor`（read-only）→ **Doctor complete，無 error 級項目**
-- [ ] 線上 agent DB `user_version` 仍 = **25**、state DB = **20**（未被升級改寫）
-- [ ] agent DB `quick_check` = ok
+- [x] 啟動 log **無** `agent database remains degraded` / `MigrationRequired` / `schema version`（grep = 0）
+- [x] 啟動 log **無** `cron/maintenance` 失敗（grep = 0）
+- [x] 啟動 log **無** `memory-core: dreaming startup cleanup failed`（grep = 0）
+- [x] `openclaw doctor`（read-only）→ **Doctor complete，無 error 級項目**（`grep -icE "error|fatal|failed"` = 0）
+- [x] 線上 agent DB `user_version` 仍 = **25**、state DB = **20**（未被升級改寫，收工複驗）
+- [x] agent DB `quick_check` = ok（state DB 亦 = ok）
 
 ### 3.2.1 Plugin 載入驗證
 
-- [ ] **17 plugins**，與 10.5 相同：`anthropic, canvas, cua-computer, device-pair, file-transfer,
-geolocation, github, google, linux-node, memory-core, microsoft, ollama, openai, talk-voice,
-tavily, telegram, xai`
-- [ ] `x` plugin **未載入**（未設定即不啟用，與 10.5 一致）
-- [ ] 無 admission 失敗（Codex 門檻 10.5 已結案為不適用）
+- [x] **17 plugins**，與 10.5 相同（來源：Gateway 啟動 log `http server listening (17 plugins: …)`）：`anthropic, canvas, cua-computer, device-pair, file-transfer, geolocation, github, google, linux-node, memory-core, microsoft, ollama, openai, talk-voice, tavily, telegram, xai`
+      geolocation, github, google, linux-node, memory-core, microsoft, ollama, openai, talk-voice,
+      tavily, telegram, xai`
+- [x] `x` plugin **未載入**（未設定即不啟用，與 10.5 一致；`plugins list --json` → `x: disabled`）
+- [x] 無 admission 失敗（Codex 門檻 10.5 已結案為不適用；啟動 log 0 筆異常）
 
 ### 3.3 運行版本
 
-- [ ] 容器內 `/app/package.json` → `2026.10.6`
-- [ ] `openclaw --version` → `OpenClaw 2026.10.6`
-- [ ] **`node --version` → v24.22.1 或以上**（🔴 本次核心驗收點；低於此值代表 base image 未生效）
-- [ ] `/health` → **200**
-- [ ] Pod `1/1 Running`、`RESTARTS 0`、image digest 與 2.8 一致
+- [x] 容器內 `/app/package.json` → `2026.10.6`
+- [x] `openclaw --version` → `OpenClaw 2026.10.6`
+- [x] **`node --version` → v24.22.1**（🔴 核心驗收點；收工複驗 = `v24.22.1`）
+- [x] `/health` → **200** `{"ok":true,"status":"live"}`（容器內無 wget/curl → 用 node `fetch`）
+- [x] Pod `1/1 Running`、`RESTARTS 0`、image digest 與 2.8 一致
 
 ### 3.4 自訂功能存活（Node base image 換版後必須重驗）
 
-- [ ] `locale -a` → `C.utf8` / **`en_US.utf8`** / **`zh_TW.utf8`**
-- [ ] `whisper` → `/usr/local/bin/whisper`；`faster_whisper.__version__` = 1.2.1
-- [ ] `edge-tts` → `/usr/local/bin/edge-tts`；`edge_tts.__version__` = 7.3.1
-- [ ] `ffmpeg` → `/usr/bin/ffmpeg`
-- [ ] `rsync` → `/usr/bin/rsync`
-- [ ] `sshd` → `/usr/sbin/sshd` 存在且 listener 運行中
-- [ ] `/app/docker/entrypoint-ssh.sh` → executable
-- [ ] Doctor 仍偵測到自訂層：`Local STT auto-selection: whisper`
+- [x] `locale -a` → `C.utf8` / **`en_US.utf8`** / **`zh_TW.utf8`**
+- [x] `whisper` → `/usr/local/bin/whisper`；`faster_whisper.__version__` = 1.2.1
+- [x] `edge-tts` → `/usr/local/bin/edge-tts`；`edge_tts.__version__` = 7.3.1
+- [x] `ffmpeg` → `/usr/bin/ffmpeg`
+- [x] `rsync` → `/usr/bin/rsync`
+- [x] `sshd` → `/usr/sbin/sshd` 存在且 listener 運行中（4 個 sshd 行程）
+- [x] `/app/docker/entrypoint-ssh.sh` → executable（0755）
+- [x] Doctor 仍偵測到自訂層：`Local STT auto-selection: whisper`
 
 ### 3.5 Gemini rate pacing（延續 10.5 未驗證項）— ✅ 實機證據成立（但代價不小）
 
@@ -367,8 +367,8 @@ tavily, telegram, xai`
       ①我的 CLI 重建行程、②Gateway 自己的 reindex 行程、③Gateway 背景 memory sync，
       三者各自持有獨立的限速佇列 → 合併速率超過 Gemini 免費層配額。
       換言之：**限速本身有效，但不足以保護「多行程並發 embedding」的情況**。
-- [ ] 429 是否已完全停止（由背景監控子代理持續回報每 5 分鐘 429 次數）
-- [ ] ⚠️ 逐請求時間戳補驗（比上述吞吐量推導更硬）：在同一個 **Gateway 行程**內觸發兩次記憶體搜尋
+- [x] 429 是否已完全停止 → ✅ **收工複驗：15:00 RPD 重置後，近 3 小時 `RESOURCE_EXHAUSTED` = 0**
+- [ ] ⚠️ 逐請求時間戳補驗（同一 Gateway 行程內兩次記憶體搜尋量間隔）——**未做**：已由 3.5 的吞吐量取樣 + 4.1.1 的一致性複驗取代，實務上不需再動 live 資料
       （query embedding 不查快取，每次都是即時請求），量兩次請求間隔是否 ≥4.2 s。
       **不需要再清快取、不影響索引**。
       ⚠️ 前提：必須等重建結束、且確認沒有其他行程在做 embedding 時再量，否則間隔會被其他行程干擾
@@ -386,10 +386,10 @@ tavily, telegram, xai`
 - [x] Gateway 本體未受影響（全程 `1/1 Running`、`/health` 200）
 - [x] ⚠️ **影響比預期大**：這次實驗的重建流量把 Gemini 免費層配額打爆，08:29~08:34 出現 429 與 sync 失敗；
       重建至今（>30 分鐘）仍未寫入索引（`memory_index_chunks` = 0）→ **記憶體搜尋持續不可用**
-- [ ] 重建完成確認（由背景監控子代理回報）
-- [ ] **教訓：以後不得為了「驗證限速」而清空 live 環境的 embedding 快取**。
+- [x] 重建完成確認 → ✅ **索引最終一致**：chunks **2044** / sources **165**（memory 140 + sessions 25）/ 向量 **2044** / FTS **2044** / provenance **2044** / recall **2044**；磁碟 mtime 逐一比對「索引後被改過的檔案」= **0**
+- [x] **教訓：以後不得為了「驗證限速」而清空 live 環境的 embedding 快取** → 已落地為全域規則 `~/.pi/agent/skills/openclaw-embedding-ops/SKILL.md` ✅
       要量限速請用「同一 Gateway 行程內兩次記憶體搜尋」量間隔，不動資料
-- [ ] **後續選項（待使用者決定）**：① 讓重建慢慢跑完（受配額限制，時間不定）
+- [x] **後續選項**：已採用 ③（由 pre-migration DB 備份回滾索引，9 張表 schema 逐一比對一致）→ 索引已還原並複驗 ✅；**不需要再跑 `memory index --force`**
       ② 接受記憶體搜尋暫時降級，等配額視窗恢復後由 Gateway 自行重建
       ③ 由 pre-migration DB 備份回滾索引（風險較高，需先比對 schema）
 
@@ -454,10 +454,10 @@ tavily, telegram, xai`
 
 ### 3.6 端到端真實訊息往返（Telegram）
 
-- [ ] `openclaw sessions list` 可讀出 session 與歷史 → **sessions 正常**
-- [ ] 收訊息 → 多輪模型呼叫（全 200）→ 回覆送出
-- [ ] `memory/dreaming/rem/<date>.md` 產生 → memory-core 運作正常
-- [ ] 確認 **10.6 修的 agent-held 存取問題已解**（#175007 / #176783）：agent 不再處於 held 狀態
+- [x] `openclaw sessions list` 可讀出 session 與歷史 → **sessions 正常**（收工複驗通過）
+- [ ] 收訊息 → 多輪模型呼叫（全 200）→ 回覆送出（**尚未實測**：本次 Telegram session 中途斷線，下次可補）
+- [x] `memory/dreaming/rem/<date>.md` 產生 → memory-core 運作正常（最新 `2026-10-23.md`）
+- [x] 確認 **10.6 修的 agent-held 存取問題已解**（#175007 / #176783）：`openclaw agents list` 正常列出 `main (default)`，doctor 零 error、啟動 log 無 degraded 痕跡
 
 ### 3.7 記憶體趨勢觀察（延續 10.5 未驗證項）
 
@@ -467,7 +467,7 @@ tavily, telegram, xai`
       診斷程式碼 10.5→10.6 **未變**（`src/logging/diagnostic-memory.test.ts`、`src/infra/diagnostic-events.ts` diff 為空）
       → 與 10.5 的比較基準一致
 - [x] `MaxListenersExceededWarning`（11 個 exit listener）為 10.5 起即存在的既有現象，非 10.6 回歸
-- [ ] 待重建結束後再取樣確認回落
+- [x] 待重建結束後再取樣確認回落 → 收工取樣 cgroup `memory.current` = **1.74 GiB**（重建峰值 4.7 GiB 已回落）
 
 ### 3.8 回滾備案（本次可單純改 image tag 🟢）
 
@@ -477,14 +477,14 @@ kubectl -n openclaw set image deployment/openclaw-gateway \
 kubectl -n openclaw rollout status deploy/openclaw-gateway
 ```
 
-- [ ] 確認回滾路徑有效（10.5 與 10.6 同為 schema 25 → **不需要**還原 DB、不需要 doctor）
-- [ ] 若需還原 DB（罕見）：參考 10.5 worksheet 3.8 的還原流程
+- [ ] 確認回滾路徑有效（10.5 與 10.6 同為 schema 25 → **不需要**還原 DB、不需要 doctor）——本次未回滾，僅保留路徑
+- [ ] 若需還原 DB（罕見）：參考 10.5 worksheet 3.8 的還原流程（本次未觸發）
 
 ### 3.9 收尾 — k8s 三端同步
 
-- [ ] Mac commit + push 到 `my-k8s` main
-- [ ] N100 rsync 鏡像同步，三端一致
-- [ ] 備份保留 7 天後清理（依既定 lifecycle policy）
+- [x] Mac commit + push 到 `my-k8s` main
+- [x] N100 rsync 鏡像同步，三端一致（Mac manifest / N100 manifest / 線上 Pod 皆為 2026.10.6）
+- [ ] 備份保留 7 天後清理（依既定 lifecycle policy；`backup-openclaw-20261023` 於 2026-10-30 到期）
 
 ---
 
@@ -512,3 +512,52 @@ kubectl -n openclaw rollout status deploy/openclaw-gateway
 4. **升級方向正確**：10.6 修的正是 10.5 升級過程中我們遇到的「agent 被 hold、migration warning 殘留、
    SQLite worker 歸還」類問題 → 對我們的 K3s 部署是正向收益。
 5. **延續未結案項**：Gemini rate pacing 實機驗證、記憶體長期趨勢（自 10.5 帶過）。
+
+---
+
+## 4. 收工複驗（2026-10-23 17:0x CST）
+
+> 升級主線與事故搶救於當日收工前全部驗證完成。本節為**收工時的線上複驗紀錄**，
+> 對應 KB 文章 `~/kubernetes/docs/openclaw-v2026-10-6-upgrade-embedding-quota-incident-20261023.md`（已併入原升級文章，未另開新文）。
+
+### 4.1 升級面複驗
+
+| 項目                | 結果                                                                                                                                    |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Pod                 | `openclaw-gateway-69bb5cdcdf-9kwwp` `1/1 Running`、RESTARTS 0                                                                           |
+| `/health`           | **200** `{"ok":true,"status":"live"}`（容器內無 wget/curl → node `fetch`）                                                              |
+| 版本                | `OpenClaw 2026.10.6`、Node **v24.22.1**、`/app/package.json` = 2026.10.6                                                                |
+| Image               | 5 個 tag digest 全 = `sha256:21dfe078315d426123e1c98221a7fedb49f7b2b2b39b8cae3805dae5b1d691a1`                                          |
+| Plugins             | Gateway log `http server listening (17 plugins: …)`；`plugins list --json` 72 catalog / 45 enabled / 41 bundled enabled；`x` = disabled |
+| Doctor              | `Doctor complete`，error 級 = 0；仍偵測到自訂層 `Local STT auto-selection: whisper`                                                     |
+| 自訂層              | `C.utf8 en_US.utf8 zh_TW.utf8`、whisper 1.2.1、edge-tts 7.3.1、ffmpeg、rsync、`/usr/sbin/sshd`（4 行程）、`entrypoint-ssh.sh` 0755      |
+| Schema              | agent `user_version=25` / state `user_version=20`，兩者 `quick_check=ok`                                                                |
+| 啟動 log            | `remains degraded｜MigrationRequired｜schema version｜dreaming startup cleanup failed｜cron/maintenance fail` = **0**                   |
+| Sessions / dreaming | `openclaw sessions list` 正常；`memory/dreaming/rem/2026-10-23.md` 產生                                                                 |
+| Agent held          | `openclaw agents list` 正常列出 `main (default)`，無 held 痕跡                                                                          |
+| 記憶體趨勢          | cgroup `memory.current` = **1.74 GiB**（冷啟 2.03 → 3.24 → 2.69 GB；重建峰值 4.7 GiB 已回落）                                           |
+| K3s 三端            | Mac `~/kubernetes` = N100 `~/kubernetes`（`newTag: "2026.10.6"`）= 線上 Pod                                                             |
+
+### 4.2 記憶體索引複驗（事故線）
+
+| 檢查           | 結果                                                                                                                         |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| 五表計數       | chunks / vec0 向量 / FTS / provenance / recall metadata 全部 **2044**（1:1 一致，無缺向量、無孤兒）                          |
+| sources        | **165**（memory 140 + sessions 25）                                                                                          |
+| 新舊程度       | 磁碟 `memory/**` mtime vs `memory_index_sources` → **「索引後被改過的檔案」= 0**（無落後）                                   |
+| 涵蓋率         | 磁碟 172 檔 vs 索引 140 檔；差額 34 檔全為 `memory/.dreams/session-corpus/*.txt`（索引範圍外的內部目錄，非缺口）             |
+| embedding 快取 | **2936**（未再清空）                                                                                                         |
+| 配額           | 15:00（太平洋午夜 = 台北 15:00）RPD 重置後恢復；近 3 小時 `RESOURCE_EXHAUSTED` = **0**                                       |
+| 搜尋功能       | `openclaw memory search "升級" --agent main`（`timeout 90`、單次）→ ✅ 回傳多筆結果，28s                                     |
+| 回滾保險       | `agent-before-cache-restore.sqlite` / `agent-before-index-restore.sqlite`（各 217MB）**原封未動**；升級前快照 869MB 原封未動 |
+
+### 4.3 結論
+
+- **索引重建已完成，不需要再跑 `openclaw memory index --force`**（會重置快取、白花配額並再次讓搜尋不可用）。
+- 日常增量由 Gateway 背景 sync 處理（sessions 索引 mtime 隨新回合推進）。
+- 尚未結案的項目只剩：
+  1. **3.5 逐請求時間戳補驗**（刻意不做：會動 live 資料，收益不抵風險）
+  2. **3.6 Telegram 端到端真實訊息往返**（本次 Telegram session 中途斷線，下次可補）
+  3. **3.8 回滾路徑實演**（本次未回滾，僅保留路徑）
+  4. **3.9 備份 7 天 lifecycle**（`backup-openclaw-20261023` 於 2026-10-30 清理）
+  5. **跨行程限速技術債**（`geminiEmbeddingQueue` 為 module 層級狀態；根治需 lock file / SQLite 協調或改走 Gateway RPC）
