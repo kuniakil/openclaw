@@ -320,8 +320,8 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 ### 3.2.1 Plugin 載入驗證
 
 - [ ] **17 plugins**，與 10.5 相同：`anthropic, canvas, cua-computer, device-pair, file-transfer,
-  geolocation, github, google, linux-node, memory-core, microsoft, ollama, openai, talk-voice,
-  tavily, telegram, xai`
+geolocation, github, google, linux-node, memory-core, microsoft, ollama, openai, talk-voice,
+tavily, telegram, xai`
 - [ ] `x` plugin **未載入**（未設定即不啟用，與 10.5 一致）
 - [ ] 無 admission 失敗（Codex 門檻 10.5 已結案為不適用）
 
@@ -360,10 +360,18 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 - [x] 實機速率符合 ~~4.2 s pacing：清空 embedding cache 後強制重建，`memory_embedding_cache`
       連續取樣為 595 → 624 → 654 → 680 → 710 → 734 → … → 987（**約 25~~30 筆 / 25 秒 ≈ 1.2 embeddings/秒**）。
       若限速失效應為每秒數十~數百筆
-- [x] **全程零 429／零 quota 錯誤**（987 筆 embedding 重建完成）
+- [x] **但「零 429」這個結論是錯的，必須更正**：08:29~~08:34 期間 Gateway log 出現
+      `429 RESOURCE_EXHAUSTED`（`You exceeded your current quota`）與 52~~60 秒 retry backoff，
+      08:34:25 有一批 `sync failed (session update)`。當時只看過重建前半段的 log 就下了「零 429」結論。
+      **根因：我們的 4.2 s 限速是「每行程」而非「全域」** —— 實驗期間同時有
+      ①我的 CLI 重建行程、②Gateway 自己的 reindex 行程、③Gateway 背景 memory sync，
+      三者各自持有獨立的限速佇列 → 合併速率超過 Gemini 免費層配額。
+      換言之：**限速本身有效，但不足以保護「多行程並發 embedding」的情況**。
+- [ ] 429 是否已完全停止（由背景監控子代理持續回報每 5 分鐘 429 次數）
 - [ ] ⚠️ 逐請求時間戳補驗（比上述吞吐量推導更硬）：在同一個 **Gateway 行程**內觸發兩次記憶體搜尋
       （query embedding 不查快取，每次都是即時請求），量兩次請求間隔是否 ≥4.2 s。
-      **不需要再清快取、不影響索引**。待 3.5 索引重建完成後執行
+      **不需要再清快取、不影響索引**。
+      ⚠️ 前提：必須等重建結束、且確認沒有其他行程在做 embedding 時再量，否則間隔會被其他行程干擾
 
 #### 3.5.1 第一次強制 reindex「零 HTTP 請求」— 為何不能當證據
 
@@ -374,10 +382,16 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 #### 3.5.2 已知副作用與復原
 
 - [x] `openclaw memory reset --agent main --yes` **清掉了 embedding cache 與衍生索引** → 重建期間
-      **記憶體搜尋不可用**（被索引寫入鎖阻擋），這是本次操作造成的唯一服務影響
-- [x] Gateway 本體未受影響（全程 `1/1 Running`、`/health` 200、無 429）
-- [x] 重建完成後索引與 cache 會回復等價狀態（同一份內容 → 同一組 embedding）
+      **記憶體搜尋不可用**（被索引寫入鎖阻擋），這是本次操作造成的服務影響
+- [x] Gateway 本體未受影響（全程 `1/1 Running`、`/health` 200）
+- [x] ⚠️ **影響比預期大**：這次實驗的重建流量把 Gemini 免費層配額打爆，08:29~08:34 出現 429 與 sync 失敗；
+      重建至今（>30 分鐘）仍未寫入索引（`memory_index_chunks` = 0）→ **記憶體搜尋持續不可用**
 - [ ] 重建完成確認（由背景監控子代理回報）
+- [ ] **教訓：以後不得為了「驗證限速」而清空 live 環境的 embedding 快取**。
+      要量限速請用「同一 Gateway 行程內兩次記憶體搜尋」量間隔，不動資料
+- [ ] **後續選項（待使用者決定）**：① 讓重建慢慢跑完（受配額限制，時間不定）
+      ② 接受記憶體搜尋暫時降級，等配額視窗恢復後由 Gateway 自行重建
+      ③ 由 pre-migration DB 備份回滾索引（風險較高，需先比對 schema）
 
 #### 3.5.3 方法論教訓
 
