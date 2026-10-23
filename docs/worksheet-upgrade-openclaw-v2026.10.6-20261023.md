@@ -400,6 +400,58 @@ tavily, telegram, xai`
       （`~/.pi/agent/AGENTS.md` + 全域 skill `delegate-long-tasks`），
       並在 `agent-release-upgrade` / `docker-image-rebuild` 留下指標。
 
+#### 3.5.4 🔴 事故記錄：為驗限速而清空快取 → 配額耗盡 → 索引全毀 → 兩次搶救
+
+> **本次真正的代價。** 升級本身（2.0～3.4、3.6～3.9）全部順利；出事的是我為了補一個
+> 「限速是否真的生效」的證據而做的**額外實驗**。
+
+**時間線**
+
+| 時間        | 事件                                                                                                                                            |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 08:0x       | 強制 reindex → **零 HTTP 請求**（embedding 全命中本地快取）→ 證明不了任何事                                                                     |
+| 08:1x       | `openclaw memory reset --agent main --yes` → **清掉 embedding cache 與衍生索引**                                                                |
+| 08:1x–08:33 | 重建進行中，cache 0 → 987，速率恆定 ~1.2 embeddings/秒（**限速確實生效**）                                                                      |
+| 08:29–08:34 | **429 RESOURCE_EXHAUSTED**（配額耗盡）＋ 52~60 秒 backoff；重建中止                                                                             |
+| 08:34       | `memory_index_chunks` / `memory_index_sources` = 0 → **記憶體搜尋不可用**；Gateway 本體健康                                                     |
+| 08:52       | Job v1：cache 還原 999 → **2936** 成功；但 `openclaw memory index` 仍 **429 失敗**（query embedding 也被拒 → 配額是真的被限死，不是快取沒命中） |
+| 09:1x       | Job v2：**索引整組還原**（9 張表 + vec0 向量 + FTS）→ chunks 2031 / sources 157 / 向量 2031 / FTS 一致，`quick_check ok`                        |
+
+**根因**：限速佇列是 **module 層級狀態**，同一行程內的執行緒共用一份（安全），
+但**另起的行程各自一份** → CLI 重建行程 + Gateway 背景 sync 行程同時 embedding
+→ 合併速率 28+ req/min → 撞同一個配額桶 → 429。
+
+**搶救過程與兩個真實缺陷**
+
+- [x] **cache 還原**（Job v1）：從 Oct 19 pre-migration 備份 `INSERT OR REPLACE` 回 2925 列 →
+      live 999 → 2936。cache 的 key 是 `(provider, model, provider_key, hash)`、hash 為內容雜湊 → 安全可重用
+- [x] **索引還原**（Job v2）：9 張表 schema 在 bak(schema 24) 與 live(schema 25) 之間**逐一比對皆一致**，
+      故列級複製安全；vec0 走**虛擬表自己的 API**、FTS5 走 `VALUES('rebuild')`
+- [x] 🔴 **我的腳本有兩個缺陷（v1 失敗後由子代理修正）**：1. plain `node` **不會自動載入 vec0 擴充** → `no such module: vec0` 2. 備份的 `memory_index_chunks.embedding` 是 **float64（24576 bytes）**，
+      而 vec0 `FLOAT[3072]` 只收 **float32（12288 bytes）** → 直接 `INSERT…SELECT embedding`
+      必然 `Expected 3072 dimensions but received 6144`。修正：載入 image 內建的
+      `sqlite-vec-linux-x64/vec0.so` ＋ float64→float32 轉換
+- [x] **還原後一致性驗證**：FTS 可查（'memory' 964 / 'openclaw' 907 / 'the' 145 rows）；
+      **缺向量 = 0、孤立向量 = 0**；重建向量與備份內 vec0 向量比對 `distance = 0.00000000`
+      （float32 轉換與 Oct 19 儲存值完全一致）；`user_version 25`、`quick_check ok`
+- [x] Gateway：`1/1 Running`、RESTARTS 0、`/health` 200；全程**零外部 API**、零 429
+- [x] 兩份 217MB 回滾快照原封未動：`agent-before-cache-restore.sqlite`、`agent-before-index-restore.sqlite`
+
+**目前狀態**
+
+- 索引已回到 Oct 19 狀態（chunks 2031 / sources 157 / 向量 2031 / FTS 一致），**零 API 成本**完成
+- **記憶體搜尋仍不可用**：query embedding 需要即時 API，Gemini 配額尚未恢復
+- 已派**限時配額偵測子代理**（每 15 分鐘 1 次單一探測，最晚今日 16:30）；
+  偵測到恢復即執行 A（用已熱好的 2936 列 cache 重跑 `memory index --force`）並驗證
+
+**防呆措施（已落地）**
+
+- [x] 全域 `~/.pi/agent/AGENTS.md` → 路由到全域 skill `openclaw-embedding-ops`
+- [x] 全域 skill `openclaw-embedding-ops`：pre-flight 四道檢查 + 判讀表 + 恢復程序 + 兩個踩坑
+      （heredoc 單引號陷阱、容器內 kill 回 EACCES、vec0 擴充與 float32/float64）
+- [x] `agent-release-upgrade` / `docker-image-rebuild` 各留指標
+- [x] 全域 skill `delegate-long-tasks`：長等待必派子代理（主迴圈不得阻塞）
+
 ### 3.6 端到端真實訊息往返（Telegram）
 
 - [ ] `openclaw sessions list` 可讀出 session 與歷史 → **sessions 正常**
