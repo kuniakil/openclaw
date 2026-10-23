@@ -320,8 +320,8 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 ### 3.2.1 Plugin 載入驗證
 
 - [ ] **17 plugins**，與 10.5 相同：`anthropic, canvas, cua-computer, device-pair, file-transfer,
-    geolocation, github, google, linux-node, memory-core, microsoft, ollama, openai, talk-voice,
-    tavily, telegram, xai`
+  geolocation, github, google, linux-node, memory-core, microsoft, ollama, openai, talk-voice,
+  tavily, telegram, xai`
 - [ ] `x` plugin **未載入**（未設定即不啟用，與 10.5 一致）
 - [ ] 無 admission 失敗（Codex 門檻 10.5 已結案為不適用）
 
@@ -344,11 +344,47 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 - [ ] `/app/docker/entrypoint-ssh.sh` → executable
 - [ ] Doctor 仍偵測到自訂層：`Local STT auto-selection: whisper`
 
-### 3.5 Gemini rate pacing（延續 10.5 未驗證項）
+### 3.5 Gemini rate pacing（延續 10.5 未驗證項）— ✅ 實機證據成立（但代價不小）
 
-- [ ] 觸發 memory embedding 索引，確認**無 429**
-- [ ] `gemini` provider 索引併發 = 1（我們的 1 行 patch 生效）
-- [ ] 請求間隔符合 ~4.2 s pacing
+> [!IMPORTANT]
+> **本節的重建不是升級必要步驟，是為了補實機證據而刻意觸發的。**
+> 10.5→10.6 的 schema / embedding 模型 / embedding 輸入格式版本**全部未變**
+> （`packages/memory-host-sdk/`、`extensions/memory-core/src/memory/embeddings.ts`、
+> `extensions/google/embedding-provider.ts` 對 10.5 的 diff 為空），
+> 因此**記憶體索引重建本來就不需要**。以後升級不要重複做這件事。
+
+- [x] `gemini` provider 索引併發 = 1（我們的 1 行 patch 生效，container 內 `/app/extensions/memory-core/src/memory/manager-embedding-ops.ts:527`）
+- [x] 限速在**實際 image 內**生效：`/app/extensions/google/embedding-provider.ts` 內含
+      `geminiEmbeddingQueue`（218）／`MIN_GEMINI_EMBEDDING_INTERVAL_MS = 4200`（219）／
+      `executePaced`（227）／串行鏈 + cooldown（295-303）
+- [x] 實機速率符合 ~~4.2 s pacing：清空 embedding cache 後強制重建，`memory_embedding_cache`
+      連續取樣為 595 → 624 → 654 → 680 → 710 → 734 → … → 987（**約 25~~30 筆 / 25 秒 ≈ 1.2 embeddings/秒**）。
+      若限速失效應為每秒數十~數百筆
+- [x] **全程零 429／零 quota 錯誤**（987 筆 embedding 重建完成）
+- [ ] ⚠️ 逐請求時間戳補驗（比上述吞吐量推導更硬）：在同一個 **Gateway 行程**內觸發兩次記憶體搜尋
+      （query embedding 不查快取，每次都是即時請求），量兩次請求間隔是否 ≥4.2 s。
+      **不需要再清快取、不影響索引**。待 3.5 索引重建完成後執行
+
+#### 3.5.1 第一次強制 reindex「零 HTTP 請求」— 為何不能當證據
+
+- [x] 用 `node:sqlite` 的 `backup()` + fetch 攔截器跑強制 reindex → **完全沒有任何 HTTP 請求**
+      （164 檔的 embedding 全命中本地 `memory_embedding_cache`）
+- [x] 結論：沒有請求就談不上速率 → 必須清空快取才測得到限速
+
+#### 3.5.2 已知副作用與復原
+
+- [x] `openclaw memory reset --agent main --yes` **清掉了 embedding cache 與衍生索引** → 重建期間
+      **記憶體搜尋不可用**（被索引寫入鎖阻擋），這是本次操作造成的唯一服務影響
+- [x] Gateway 本體未受影響（全程 `1/1 Running`、`/health` 200、無 429）
+- [x] 重建完成後索引與 cache 會回復等價狀態（同一份內容 → 同一組 embedding）
+- [ ] 重建完成確認（由背景監控子代理回報）
+
+#### 3.5.3 方法論教訓
+
+- [x] **主代理不可阻塞於等待**：本次在主迴圈跑 `sleep` 輪詢與長 timeout 的 `kubectl exec`，
+      使用者連續兩次發問「現在在查什麼？」「卡住了？」。已寫成全域規則
+      （`~/.pi/agent/AGENTS.md` + 全域 skill `delegate-long-tasks`），
+      並在 `agent-release-upgrade` / `docker-image-rebuild` 留下指標。
 
 ### 3.6 端到端真實訊息往返（Telegram）
 
@@ -359,8 +395,13 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 
 ### 3.7 記憶體趨勢觀察（延續 10.5 未驗證項）
 
-- [ ] 冷啟動後 cgroup memory 量測，與 10.5 的 **774 MiB** 對照
-- [ ] 採**趨勢**判斷，不以單次 `rss_threshold` 警告升級為事故
+- [x] 冷啟動後 cgroup memory 量測：2.03 GB → 3.24 GB → 3.27 GB → **2.69 GB**（開始下降）
+- [x] 重建期間峰值 **4.7 GiB**（embedding 批次在記憶體中），無 `memory.max` 上限（`max` = 無限制）
+- [x] 採**趨勢**判斷，不以單次 `rss_threshold` 警告升級為事故；
+      診斷程式碼 10.5→10.6 **未變**（`src/logging/diagnostic-memory.test.ts`、`src/infra/diagnostic-events.ts` diff 為空）
+      → 與 10.5 的比較基準一致
+- [x] `MaxListenersExceededWarning`（11 個 exit listener）為 10.5 起即存在的既有現象，非 10.6 回歸
+- [ ] 待重建結束後再取樣確認回落
 
 ### 3.8 回滾備案（本次可單純改 image tag 🟢）
 
