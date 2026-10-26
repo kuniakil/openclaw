@@ -324,7 +324,7 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 
 - [x] **17 plugins**，與 10.6 相同（Gateway 啟動 log `http server listening (17 plugins: …)`）：
       `anthropic, canvas, cua-computer, device-pair, file-transfer, geolocation, github, google, linux-node,
-    memory-core, microsoft, ollama, openai, talk-voice, tavily, telegram, xai`
+  memory-core, microsoft, ollama, openai, talk-voice, tavily, telegram, xai`
 - [x] `x` plugin **未載入**（未設定即不啟用，與 10.6 一致）
 - [x] 無 admission 失敗；Telegram provider 啟動正常（`starting provider (@N100_openclaw_mike_bot)`、
       `isolated polling ingress started`）
@@ -382,21 +382,40 @@ kubectl -n openclaw rollout status deploy/openclaw-gateway
 
 - [x] Mac commit + push 到 `my-k8s` main
 - [x] N100 rsync 鏡像同步，三端一致（Mac manifest / N100 manifest / 線上 Pod 皆為 2026.10.7）
-- [ ] 備份 lifecycle：**提示使用者、等明確確認才刪**
-  - A 層 `/home/kuniaki/backup-openclaw-20261023`（869M）→ 到期日 **2026-10-30**
-  - B 層 `/data/services/openclaw/.openclaw/tmp/cache-restore-20261023/`（435M）→ 索引連續 3 天穩定後
-    （10.23 還原 → 今日 10.26 滿 3 天，**可依此判定**）
-  - C 層 Doctor pre-migration bak（241M）→ 同上
-  - D 層（本次新增）`/home/kuniaki/backup-openclaw-20261026`（267M）→ 10.7 升級前快照，回滾用
+- [x] 備份 lifecycle：**已於使用者明確指示後清理 A / B 層**
+  - A 層 `/home/kuniaki/backup-openclaw-20261023`（869M）→ ✅ **已刪除**
+  - B 層 `/data/services/openclaw/.openclaw/tmp/cache-restore-20261023/`（415M）→ ✅ **已刪除**
+    （索引自 10.23 還原後已穩定運行 3 天，chunks 2115 且本次升級零重建）
+  - C 層 Doctor pre-migration bak → 先前已不存在（無需處理）
+  - D 層（本次新增）`/home/kuniaki/backup-openclaw-20261026`（267M）→ **保留**，10.7 升級前回滾用
+  - 磁碟 `/` 575G → **574G**（1.8T，33%）
 
 ### 3.6 未結案項（結轉）
 
-- [ ] **Telegram 端到端真實訊息往返**（自 10.6 結轉）—— 本次僅驗證 provider 啟動與 polling ingress 正常，
-      未實際收發一則 Telegram 訊息。需使用者在 `@N100_openclaw_mike_bot` 發一則訊息確認
-      （會觸發 embedding，故不自動執行）。
-- [ ] **備份 A/B/C 層清理**（依 3.5，等使用者明確確認才刪；本次不自動刪）
+- [x] **Telegram 端到端真實訊息往返**（自 10.6 結轉）→ ✅ **已補驗（2026-10-26 14:17 CST，使用者實際發訊）**
+  - `14:17:50` polling 收到 `updateId=596795900`
+  - `14:17:51` **Inbound message** `telegram:830338761` → `@N100_openclaw_mike_bot`（direct, 14 chars）
+  - `14:17:54` agent turn 啟動（`run=34d16946-9ee1-4864-8285-766e77c9de6d`）；code-mode cataloged 110 tools
+  - `14:18:07 / 14:18:26 / 14:18:35` **model-fetch provider=minimax model=MiniMax-M3 status=200 ×3**（含 tool turn）
+  - `14:18:45` **outbound send ok** `chatId=830338761 messageId=2651` → **收 → 模型 → 工具 → 送出 全程成立**
+  - 期間 `RESOURCE_EXHAUSTED` = **0**、`[memory]` 事件 = **0**（本次回合未觸發 embedding）
+- [x] **備份 A / B 層清理**（使用者 2026-10-26 明確指示後執行）
+  - A 層 `/home/kuniaki/backup-openclaw-20261023`（869M）→ **已刪除**
+  - B 層 `/data/services/openclaw/.openclaw/tmp/cache-restore-20261023/`（415M）→ **已刪除**
+  - C 層 Doctor pre-migration bak：先前已不存在（無需處理）
+  - **保留** D 層 `/home/kuniaki/backup-openclaw-20261026`（267M，本次升級前回滾點）
 - [ ] **跨行程限速技術債**（`geminiEmbeddingQueue` 為 module 層級狀態；根治需 lock file / SQLite 協調
       或改走 Gateway RPC）—— 上游未修，非本次迴歸
+
+### 3.7 啟動時的 stale lease 觀察（10.6 修復生效）
+
+- [x] 啟動時出現 `[state/agent-db] agent database stale lease: owner-pid-dead; previous release not observed`
+      與 `integrityGateReason=stale-lease-full`（舊 Pod 的 pid 遺留 lease）→
+      **14:06:32 `agent database recovered after background inspection and preparation`** ✅ 自動復原，無需介入
+- [x] 對應 10.6 修的 #175007 / #176783（agent-held 存取復原）→ 本次未出現 held 狀態
+- [x] `doctor` error 級 = 0；`openclaw sessions list` 正常；Telegram 回合正常
+- [ ] `MaxListenersExceededWarning`（11 個 exit listener）為 10.5 起即存在的既有現象，非 10.7 迴歸
+- [ ] `slow SQLite transaction hold`（2.1–2.3 s）為資訊性告警，非失敗（outcome=resolved）
 
 ---
 
