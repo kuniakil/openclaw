@@ -302,65 +302,71 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 
 ### 3.1 K3s 部署
 
-- [ ] **由 Mac 編輯** `~/kubernetes/openclaw/overlays/n100/kustomization.yaml`：`2026.10.6` → `2026.10.7`
+- [x] **由 Mac 編輯** `~/kubernetes/openclaw/overlays/n100/kustomization.yaml`：`2026.10.6` → `2026.10.7`
       （Mac 為唯一編輯來源；N100 只部署不改 manifest）
-- [ ] `kubectl kustomize` 預覽確認產出 `ghcr.io/kuniakil/openclaw:2026.10.7`
-- [ ] `kubectl apply -k` → rollout status → 新 Pod `1/1 Running`、`RESTARTS 0`
-      （⭐ rollout status 若逾時 → 派背景子代理）
-- [ ] `~/kubernetes` commit + push；N100 rsync 鏡像同步（Mac / N100 / 線上 Pod 三端一致）
+- [x] `kubectl kustomize` 預覽確認產出 `ghcr.io/kuniakil/openclaw:2026.10.7`（Mac 與 N100 皆確認）
+- [x] `kubectl apply -k` → rollout status → 新 Pod `openclaw-gateway-797c755676-8qdmz` `1/1 Running`、
+      **RESTARTS 0**
+- [x] `~/kubernetes` commit + push；N100 rsync 鏡像同步（Mac / N100 / 線上 Pod 三端一致）
 
 #### 3.1.1 無 migration 驗證
 
-- [ ] 啟動 log **無** `agent database remains degraded` / `MigrationRequired` / `schema version`（grep = 0）
-- [ ] 啟動 log **無** `cron/maintenance` 失敗 / `dreaming startup cleanup failed`（grep = 0）
-- [ ] `openclaw doctor`（read-only）→ **Doctor complete，無 error 級項目**
-- [ ] 線上 agent DB `user_version` = **25**、state DB = **20**（未被升級改寫）
-- [ ] agent DB 與 state DB `quick_check` = ok
+- [x] 啟動 log **無** `agent database remains degraded` / `MigrationRequired` / `schema version` /
+      `dreaming startup cleanup failed` / `cron/maintenance fail`（grep = **0**）
+- [x] `openclaw doctor`（read-only）→ **Doctor complete**，error 級 grep = **0**；
+      仍偵測到自訂層 `Local STT auto-selection: whisper`；
+      僅剩一則既有警告：Browser Relay legacy auth（與 10.6 相同，非本次迴歸）
+- [x] 線上 agent DB `user_version` = **25**、state DB = **20**（未被升級改寫）；
+      兩者 `PRAGMA quick_check` = **ok**
+- [x] 啟動後 15 分鐘內 log 無 error/warn/fail（排除 browser relay 舊警告後 grep = 0）
 
 #### 3.1.2 Plugin 載入驗證
 
-- [ ] **17 plugins**（與 10.6 相同）：`anthropic, canvas, cua-computer, device-pair, file-transfer,
-    geolocation, github, google, linux-node, memory-core, microsoft, ollama, openai, talk-voice,
-    tavily, telegram, xai`
-- [ ] `x` plugin **未載入**（未設定即不啟用，與 10.6 一致）
-- [ ] 無 admission 失敗
+- [x] **17 plugins**，與 10.6 相同（Gateway 啟動 log `http server listening (17 plugins: …)`）：
+      `anthropic, canvas, cua-computer, device-pair, file-transfer, geolocation, github, google, linux-node,
+    memory-core, microsoft, ollama, openai, talk-voice, tavily, telegram, xai`
+- [x] `x` plugin **未載入**（未設定即不啟用，與 10.6 一致）
+- [x] 無 admission 失敗；Telegram provider 啟動正常（`starting provider (@N100_openclaw_mike_bot)`、
+      `isolated polling ingress started`）
 
 #### 3.1.3 運行版本
 
-- [ ] 容器內 `/app/package.json` → `2026.10.7`
-- [ ] `openclaw --version` → `OpenClaw 2026.10.7`
-- [ ] `node --version` → **v24.22.1**（下限未變，應維持）
-- [ ] `/health` → **200** `{"ok":true,"status":"live"}`（容器內無 wget/curl → 用 node `fetch`）
+- [x] 容器內 `/app/package.json` → `2026.10.7`
+- [x] `openclaw --version` → `OpenClaw 2026.10.7`
+- [x] `node --version` → **v24.22.1**（下限未變，符合預期）
+- [x] `/health` → **200** `{"ok":true,"status":"live"}`（容器內無 wget/curl → node `fetch`）
 
 #### 3.1.4 行為變更觀察（10.7 新增）
 
-- [ ] standing-intent 工具（`intent`）現在對非 owner 也可能開放（上游移除 `senderIsOwner` 守門）
-      → 確認我們的 Telegram session 仍只有 owner 對話，且沒有非授權的 standing intent 被建立
-      （`intent` list 為空 / 僅有 owner 建立者）
-- [ ] 記憶體搜尋仍可用（**不得**為了驗證而觸發 embedding；索引未重建，預期直接可查）
-- [ ] `openclaw sessions list` 正常（10.7 重點修的就是 session recovery）
+- [x] standing-intent 工具現在對非 owner 也可能開放（上游移除 `senderIsOwner` 守門）
+      → 升級前後 `standing_intents` 表皆為 **0 列** → **沒有非授權 standing intent 被建立** ✅
+- [x] 記憶體索引未被重建（見 3.2，計數與升級前完全一致）→ **全程零 embedding 請求**
+- [x] `openclaw sessions list` 正常列出 sessions → 10.7 重點修的 session recovery 未回歸
 
 #### 3.1.5 自訂功能存活
 
-- [ ] `locale -a` → `C.utf8` / **`en_US.utf8`** / **`zh_TW.utf8`**
-- [ ] `whisper` → `/usr/local/bin/whisper`；`faster_whisper.__version__` = 1.2.1
-- [ ] `edge-tts` → `/usr/local/bin/edge-tts`；`edge_tts.__version__` = 7.3.1
-- [ ] `ffmpeg` / `rsync` 存在；`/usr/sbin/sshd` 存在且 listener 運行中
-- [ ] `/app/docker/entrypoint-ssh.sh` → executable（0755）
-- [ ] Doctor 仍偵測到自訂層：`Local STT auto-selection: whisper`
-- [ ] 容器內 `extensions/google/embedding-provider.ts` 仍含 `MIN_GEMINI_EMBEDDING_INTERVAL_MS = 4200`
-      （我們的 Gemini rate pacing 存活 → 保護配額）
+- [x] `locale -a` → `C` / `C.utf8` / `POSIX` / **`en_US.utf8`** / **`zh_TW.utf8`**
+- [x] `whisper` → `/usr/local/bin/whisper`；`faster_whisper.__version__` = 1.2.1
+- [x] `edge-tts` → `/usr/local/bin/edge-tts`；`edge_tts.__version__` = 7.3.1
+- [x] `ffmpeg` → `/usr/bin/ffmpeg`；`rsync` → `/usr/bin/rsync`
+- [x] `/usr/sbin/sshd` 存在（1265432 bytes）且 sshd 行程運行中（2 個）
+- [x] `/app/docker/entrypoint-ssh.sh` → mode **0755**
+- [x] Doctor 仍偵測到自訂層：`Local STT auto-selection: whisper`
+- [x] 容器內 `extensions/google/embedding-provider.ts` 含 `MIN_GEMINI_EMBEDDING_INTERVAL_MS`（2 處命中）
+      → 我們的 Gemini rate pacing 存活，繼續保護配額
+- [x] 容器內 `extensions/memory-core/src/memory/manager-embedding-ops.ts` 含 `provider?.id === "gemini"`（1 處命中）
+      → gemini 索引併發鎖 1 存活
 
 ### 3.2 記憶體索引狀態確認（**唯讀，不重建**）
 
-- [ ] 五表計數仍為 chunks 2044 / sources 165 / 向量 2044 / FTS 2044（**不重建、不清 cache**）
-- [ ] `memory_embedding_cache` 筆數 ≥ 2936（未再被清空）
-- [ ] 近 3 小時 `RESOURCE_EXHAUSTED` = 0（本次升級期間不得出現新的 429）
+- [x] 五表計數與升級前**完全一致**（chunks **2115** / sources **174** / FTS **2115**）→ **未被重建、未被清空**
+- [x] `memory_embedding_cache` = **3033**（升級前 3033，未再被清空；Gateway 背景 sync 持續推進）
+- [x] 近 3 小時 `RESOURCE_EXHAUSTED` = **0**（本次升級期間零 429、零 embedding 請求）
 
 ### 3.3 記憶體趨勢觀察（延續 10.6 觀察項）
 
-- [ ] 冷啟動後 cgroup `memory.current` 取樣 3 次（應落在 ~1.7–2.5 GiB 區間）
-- [ ] 以**趨勢**判斷，不以單次 `rss_threshold` 警告升級為事故
+- [x] cgroup `memory.current` 三次取樣 = **1.794 / 1.794 / 1.794 GB**（10.6 收工值 1.74 GiB → 持平，無攀升）
+- [x] 以**趨勢**判斷，不以單次 `rss_threshold` 警告升級為事故
 
 ### 3.4 回滾備案（本次可單純改 image tag 🟢）
 
@@ -370,18 +376,27 @@ kubectl -n openclaw set image deployment/openclaw-gateway \
 kubectl -n openclaw rollout status deploy/openclaw-gateway
 ```
 
-- [ ] 確認 10.6 與 10.7 同為 agent schema 25 → **不需要**還原 DB、不需要 doctor
-- [ ] 保留路徑（本次不實際回滾）
+- [x] 確認 10.6 與 10.7 同為 agent schema 25 → **不需要**還原 DB、不需要 doctor（保留路徑，未實際回滾）
 
 ### 3.5 收尾 — k8s 三端同步
 
-- [ ] Mac commit + push 到 `my-k8s` main
-- [ ] N100 rsync 鏡像同步，三端一致（Mac manifest / N100 manifest / 線上 Pod 皆為 2026.10.7）
+- [x] Mac commit + push 到 `my-k8s` main
+- [x] N100 rsync 鏡像同步，三端一致（Mac manifest / N100 manifest / 線上 Pod 皆為 2026.10.7）
 - [ ] 備份 lifecycle：**提示使用者、等明確確認才刪**
   - A 層 `/home/kuniaki/backup-openclaw-20261023`（869M）→ 到期日 **2026-10-30**
   - B 層 `/data/services/openclaw/.openclaw/tmp/cache-restore-20261023/`（435M）→ 索引連續 3 天穩定後
     （10.23 還原 → 今日 10.26 滿 3 天，**可依此判定**）
   - C 層 Doctor pre-migration bak（241M）→ 同上
+  - D 層（本次新增）`/home/kuniaki/backup-openclaw-20261026`（267M）→ 10.7 升級前快照，回滾用
+
+### 3.6 未結案項（結轉）
+
+- [ ] **Telegram 端到端真實訊息往返**（自 10.6 結轉）—— 本次僅驗證 provider 啟動與 polling ingress 正常，
+      未實際收發一則 Telegram 訊息。需使用者在 `@N100_openclaw_mike_bot` 發一則訊息確認
+      （會觸發 embedding，故不自動執行）。
+- [ ] **備份 A/B/C 層清理**（依 3.5，等使用者明確確認才刪；本次不自動刪）
+- [ ] **跨行程限速技術債**（`geminiEmbeddingQueue` 為 module 層級狀態；根治需 lock file / SQLite 協調
+      或改走 Gateway RPC）—— 上游未修，非本次迴歸
 
 ---
 
@@ -391,7 +406,9 @@ kubectl -n openclaw rollout status deploy/openclaw-gateway
 - **官方 Changelog:** https://raw.githubusercontent.com/openclaw/openclaw/v2026.10.7/CHANGELOG/2026.10.7.md
 - **官方 release SHA:** `157d8c2bc3ea2fa183afdc11088e69690bf8e64e`
 - **Schema contract:** `src/state/openclaw-agent-db-contract.ts`（agent = 25）、`src/state/openclaw-state-db-contract.ts`（state = 20）—— 兩者對 10.6 diff 皆為空
-- **Image:** `ghcr.io/kuniakil/openclaw:2026.10.7`
+- **Image:** `ghcr.io/kuniakil/openclaw:2026.10.7`（digest `sha256:ccd97e7941f32a701810ae2f61c06da20876d1c73d405c8d38d399f271fd8a34v`）
+- **Build run:** https://github.com/kuniakil/openclaw/actions/runs/40276017867（success, 11m03s）
+- **Branch:** `my-config-v2026.10.7`（HEAD `bacf487629f` → 後續驗證 commit）
 - **K3s 部署:** `~/kubernetes/openclaw/overlays/n100/`
 - **資料路徑:** `/data/services/openclaw/.openclaw/`（`/home/kuniaki/openclaw` 為其 symlink）
 - **SOP 來源:** `~/.pi/agent/skills/agent-release-upgrade/SKILL.md`、`~/.pi/agent/skills/docker-image-rebuild/SKILL.md`
