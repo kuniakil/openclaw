@@ -324,7 +324,7 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 
 - [x] **17 plugins**，與 10.6 相同（Gateway 啟動 log `http server listening (17 plugins: …)`）：
       `anthropic, canvas, cua-computer, device-pair, file-transfer, geolocation, github, google, linux-node,
-  memory-core, microsoft, ollama, openai, talk-voice, tavily, telegram, xai`
+memory-core, microsoft, ollama, openai, talk-voice, tavily, telegram, xai`
 - [x] `x` plugin **未載入**（未設定即不啟用，與 10.6 一致）
 - [x] 無 admission 失敗；Telegram provider 啟動正常（`starting provider (@N100_openclaw_mike_bot)`、
       `isolated polling ingress started`）
@@ -390,7 +390,34 @@ kubectl -n openclaw rollout status deploy/openclaw-gateway
   - D 層（本次新增）`/home/kuniaki/backup-openclaw-20261026`（267M）→ **保留**，10.7 升級前回滾用
   - 磁碟 `/` 575G → **574G**（1.8T，33%）
 
-### 3.6 未結案項（結轉）
+### 3.8 Agent 自主升級後健康檢查（經 Gateway 執行，2026-10-26 18:5x）
+
+> 由 openclaw 自己的 agent（`openclaw agent --agent main --message-file …`，**經 Gateway、不帶 `--local`**，
+> 因此與 Gateway 共用同一份 Gemini 限速佇列）執行 9 組唯讀檢查，耗時 3.5 分鐘、
+> assistantTurns 11、codeMode 啟用、成本 $0.2737、input 426K / cacheRead 4.29M。
+
+- [x] **A/B/C/D/E/F/G/H/I 全部核心項目 OK**：版本 `2026.10.7` + Node `v24.22.1`（三者一致）、
+      17/17 plugins `enabled=true`（`x` disabled）、doctor `Doctor complete` 且 error 級 = 0、
+      自訂層全數存活（locale `en_US.utf8`/`zh_TW.utf8`、whisper 1.2.1、edge-tts 7.3.1、ffmpeg、rsync、sshd、
+      entrypoint 0755、Gemini 限速 patch 命中 2、gemini 併發鎖命中 1）、
+      agent DB `uv=25`/`qc=ok`、state DB `uv=20`/`qc=ok`、`standing_intents`=0、
+      sessions 5 筆含 `agent:main:main` 與 `telegram:default:direct:830338761`、fatal/panic/unhandled = 0
+- [x] **約束遵守**：全程唯讀——未觸發 embedding（無 memory index/search/reset、無 `agent --local`、
+      無 `status --deep`）、doctor 未 `--fix`、未重啟、未刪檔、未回傳憑證值、未遞迴 agent
+
+**Agent 回報的 5 項偏差 → 主機端複驗結果**
+
+| #   | 偏差                             | 主機端複驗                                                                                                                                                                                                                            | 判定                              |
+| --- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| 1   | chunks/fts 2170 > 2115           | `cache` 3154 ≥ 3033、`fts == chunks`、`repairedIndexCount=0` → **增量索引，非重建**                                                                                                                                                   | 🟢 可接受                         |
+| 2   | dreaming 路徑不符                | 實際在 `workspace/memory/dreaming/{rem,light,deep}/`，今日 03:00 有 `rem/2026-10-26.md`                                                                                                                                               | 🟢 規格路徑需修正                 |
+| 3   | 429 × 4                          | 確認為 **真實**事件，但全部在 `14:55`、來源 **MiniMax Token Plan 額度**（背景 skill/workshop lane）；`gemini/embedding` 相關 = **0**；本回合後 8h 的唯一 `RESOURCE_EXHAUSTED` grep 命中是 **agent 自己回覆文字的 echo**（log 行 553） | 🟡 需觀察（非升級造成）           |
+| 4   | `memory.current` 3.89 GB         | 複驗：3.65 → 3.42 → 3.47 GB（60s 內**開始下降**，turn 的 437K context 釋放中）；主 gateway RSS 2.17 GB；`memory.max = max` 無上限；N100 32GB                                                                                          | 🟡 需觀察（趨勢向下，非單調攀升） |
+| 5   | `backup-openclaw-*` 容器內不存在 | 主機端確認：`/home/kuniaki/backup-openclaw-*` 只有 `backup-openclaw-20261026` → **視線限制，非檔案遺失**                                                                                                                              | 🟢 可接受                         |
+
+- [x] **Agent 結論：升級驗收 = 通過（有條件）**，無阻斷驗收項目
+
+### 3.9 未結案項（結轉）
 
 - [x] **Telegram 端到端真實訊息往返**（自 10.6 結轉）→ ✅ **已補驗（2026-10-26 14:17 CST，使用者實際發訊）**
   - `14:17:50` polling 收到 `updateId=596795900`
@@ -406,6 +433,8 @@ kubectl -n openclaw rollout status deploy/openclaw-gateway
   - **保留** D 層 `/home/kuniaki/backup-openclaw-20261026`（267M，本次升級前回滾點）
 - [ ] **跨行程限速技術債**（`geminiEmbeddingQueue` 為 module 層級狀態；根治需 lock file / SQLite 協調
       或改走 Gateway RPC）—— 上游未修，非本次迴歸
+- [ ] **MiniMax Token Plan 額度**（2026-10-26 14:55 額度打滿 → 背景 lane `Embedded agent failed before reply`）
+      —— 與升級無關的供應商額度問題，需決定是否升額度 / 買 credits / 改用較省額度的模型
 
 ### 3.7 啟動時的 stale lease 觀察（10.6 修復生效）
 
