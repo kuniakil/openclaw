@@ -387,7 +387,7 @@ kubectl -n openclaw rollout status deploy/openclaw-gateway
   - B 層 `/data/services/openclaw/.openclaw/tmp/cache-restore-20261023/`（415M）→ ✅ **已刪除**
     （索引自 10.23 還原後已穩定運行 3 天，chunks 2115 且本次升級零重建）
   - C 層 Doctor pre-migration bak → 先前已不存在（無需處理）
-  - D 層（本次新增）`/home/kuniaki/backup-openclaw-20261026`（267M）→ **保留**，10.7 升級前回滾用
+  - D 層（本次新增）`/home/kuniaki/backup-openclaw-20261026`（267M）→ **保留**（已於 2026-10-28 升級 10.8 驗證通過後依指示刪除）
   - 磁碟 `/` 575G → **574G**（1.8T，33%）
 
 ### 3.8 Agent 自主升級後健康檢查（經 Gateway 執行，2026-10-26 18:5x）
@@ -430,7 +430,7 @@ kubectl -n openclaw rollout status deploy/openclaw-gateway
   - A 層 `/home/kuniaki/backup-openclaw-20261023`（869M）→ **已刪除**
   - B 層 `/data/services/openclaw/.openclaw/tmp/cache-restore-20261023/`（415M）→ **已刪除**
   - C 層 Doctor pre-migration bak：先前已不存在（無需處理）
-  - **保留** D 層 `/home/kuniaki/backup-openclaw-20261026`（267M，本次升級前回滾點）
+  - D 層 `/home/kuniaki/backup-openclaw-20261026`（267M）→ **已於 2026-10-28 升級 10.8 驗證通過後依指示刪除**
 - [ ] **跨行程限速技術債**（`geminiEmbeddingQueue` 為 module 層級狀態；根治需 lock file / SQLite 協調
       或改走 Gateway RPC）—— 上游未修，非本次迴歸
 - [ ] **MiniMax Token Plan 額度**（2026-10-26 14:55 額度打滿 → 背景 lane `Embedded agent failed before reply`）

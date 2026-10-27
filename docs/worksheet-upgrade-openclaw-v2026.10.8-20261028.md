@@ -412,8 +412,8 @@ ssh n100 "cd ~/kubernetes && git checkout -- openclaw/overlays/n100/kustomizatio
 #### 3.1.2 Plugin 載入驗證
 
 - [x] **17 plugins**，與 10.7 相同（Gateway 啟動 log `http server listening (17 plugins: anthropic, canvas,
-  cua-computer, device-pair, file-transfer, geolocation, github, google, linux-node, memory-core,
-  microsoft, ollama, openai, talk-voice, tavily, telegram, xai; 11.0s)`）
+cua-computer, device-pair, file-transfer, geolocation, github, google, linux-node, memory-core,
+microsoft, ollama, openai, talk-voice, tavily, telegram, xai; 11.0s)`）
 - [x] `openclaw plugins list` → 該 17 個 **全部 `enabled`**（disabled=0）
       （`openclaw plugins list` 顯示 45 enabled / 27 disabled 是**全目錄**計數，非 10.7 的 17；
       10.7 worksheet 的「17」指 Gateway 啟動載入的 17 個，兩者口徑不同）
@@ -435,7 +435,7 @@ ssh n100 "cd ~/kubernetes && git checkout -- openclaw/overlays/n100/kustomizatio
 - [x] **exec 行為**：code-mode 的 exec/wait 仍可正常執行，未出現新的 approval 阻擋
       （上游 #180880 讓 allowlist 模式的 `test -v` 需審批；我們預設 `full`，應不受影響）
 - [x] **agent DB 啟動**：出現 `agent database stale lease: owner-pid-dead` → `integrityGateReason=stale-lease-full
-  because=host-boot-namespace-version-file-mismatch` → **自癒** `agent database recovered after background inspection and preparation`
+because=host-boot-namespace-version-file-mismatch` → **自癒** `agent database recovered after background inspection and preparation`
       → 正是上游 #182615 / #182446 修的現象，**已恢復、不需人工介入**
 - [x] `standing_intents` 表仍為 **0 列**
 - [x] `openclaw sessions list` 正常列出 6 個 session（含 `agent:main:telegram:default:direct:830338761`）
@@ -514,10 +514,10 @@ kubectl -n openclaw rollout status deploy/openclaw-gateway
 
 - [x] Mac commit + push 到 `my-k8s` main（`1d51e28`）；N100 `git pull` 同步；三端一致
       （Mac / N100 git HEAD 皆 `1d51e28`，線上 Pod imageID = manifest digest `sha256:155bff25...`）
-- [ ] 備份 lifecycle：**驗證完提示使用者，等確認才刪**
-  - 10.7 層 `/home/kuniaki/backup-openclaw-20261026`（267M）→ 保留期至 ~2026-11-02
-  - 10.8 層 `/home/kuniaki/backup-openclaw-20261028`（**294M**，本次新建）→ 保留，10.8 升級前回滾用
-  - 磁碟 `/` 現況 581G / 1.8T（34%）
+- [x] 備份 lifecycle：**已於使用者明確指示後清理 10.7 快照**（2026-10-28 07:37 CST）
+  - 10.7 層 `/home/kuniaki/backup-openclaw-20261026`（267M）→ ✅ **已刪除**
+  - 10.8 層 `/home/kuniaki/backup-openclaw-20261028`（**294M**，本次新建）→ **保留**，10.8 升級前回滾用
+  - 磁碟 `/` 現況 586G / 1.8T（34%）
 - [x] 確認無 `*.memory-reindex-*` orphaned shadow DB 殘留（上游 #185902 提醒）
       → 備份排除規則本來就排除 reindex lock / shadow DB，且升級期間未跑 memory index
 - [x] 容器內暫存 `/home/node/.openclaw/tmp/backup-20261028` 已清除
