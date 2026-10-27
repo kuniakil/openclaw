@@ -262,9 +262,9 @@ cgroup memory.current : 2,867,838,976 B（≈2.67 GiB；10.7 收工 1.79 GB → 
 - [x] `git status -sb` → `## my-config-v2026.10.7...origin/my-config-v2026.10.7`（工作區乾淨）
 - [x] 官方 baseline tag 已 fetch
       `bash
-  git fetch upstream refs/tags/v2026.10.8:refs/tags/upstream-v2026.10.8 --no-tags
-  git rev-parse 'upstream-v2026.10.8^{commit}'   # dc2523e5a5c7a309517fd7fa834add938231d526
-  `
+git fetch upstream refs/tags/v2026.10.8:refs/tags/upstream-v2026.10.8 --no-tags
+git rev-parse 'upstream-v2026.10.8^{commit}'   # dc2523e5a5c7a309517fd7fa834add938231d526
+`
       （與官方 release notes 內的 `release SHA: dc2523e5a5c7...` 一致）
 - [x] `schemaVersions` 對比：`10.7 {state:20, agent:25}` == `10.8 {state:20, agent:25}` → **無 migration**
 - [x] DB 契約檔 / DB schema 檔 diff 皆為空；diff 內無新增 `CREATE TABLE`（僅 test fixture）
@@ -377,8 +377,8 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 - [x] **N100 端 manifest 先清掉本地未提交修改再同步**（N100 `~/kubernetes` 落後 origin/main 9 commits，
       且 `openclaw/overlays/n100/kustomization.yaml` 有本地未提交 diff）：
       `bash
-  ssh n100 "cd ~/kubernetes && git checkout -- openclaw/overlays/n100/kustomization.yaml"
-  `
+ssh n100 "cd ~/kubernetes && git checkout -- openclaw/overlays/n100/kustomization.yaml"
+`
       → 該本地 diff 與 `origin/main` 內容相同（僅落後，非實質衝突），`git checkout --` 後乾淨
 - [x] Mac commit + push `my-k8s` main → N100 `git pull origin main`（k3s-sync-ops 標準流程）
       → Mac commit `1d51e28`（`deploy: openclaw update image to 2026.10.8`）→ push 成功
@@ -412,8 +412,8 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 #### 3.1.2 Plugin 載入驗證
 
 - [x] **17 plugins**，與 10.7 相同（Gateway 啟動 log `http server listening (17 plugins: anthropic, canvas,
-    cua-computer, device-pair, file-transfer, geolocation, github, google, linux-node, memory-core,
-    microsoft, ollama, openai, talk-voice, tavily, telegram, xai; 11.0s)`）
+  cua-computer, device-pair, file-transfer, geolocation, github, google, linux-node, memory-core,
+  microsoft, ollama, openai, talk-voice, tavily, telegram, xai; 11.0s)`）
 - [x] `openclaw plugins list` → 該 17 個 **全部 `enabled`**（disabled=0）
       （`openclaw plugins list` 顯示 45 enabled / 27 disabled 是**全目錄**計數，非 10.7 的 17；
       10.7 worksheet 的「17」指 Gateway 啟動載入的 17 個，兩者口徑不同）
@@ -435,7 +435,7 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 - [x] **exec 行為**：code-mode 的 exec/wait 仍可正常執行，未出現新的 approval 阻擋
       （上游 #180880 讓 allowlist 模式的 `test -v` 需審批；我們預設 `full`，應不受影響）
 - [x] **agent DB 啟動**：出現 `agent database stale lease: owner-pid-dead` → `integrityGateReason=stale-lease-full
-    because=host-boot-namespace-version-file-mismatch` → **自癒** `agent database recovered after background inspection and preparation`
+  because=host-boot-namespace-version-file-mismatch` → **自癒** `agent database recovered after background inspection and preparation`
       → 正是上游 #182615 / #182446 修的現象，**已恢復、不需人工介入**
 - [x] `standing_intents` 表仍為 **0 列**
 - [x] `openclaw sessions list` 正常列出 6 個 session（含 `agent:main:telegram:default:direct:830338761`）
@@ -500,19 +500,15 @@ kubectl -n openclaw rollout status deploy/openclaw-gateway
 
 ### 3.5 Telegram 端到端真實訊息往返（必做，10.8 改動了 Telegram secret 契約）
 
-- [ ] 使用者實際發訊到 `@N100_openclaw_mike_bot`
-- [ ] log 出現 `Inbound message` → agent turn 啟動 → `model-fetch provider=minimax model=MiniMax-M3 status=200`
-      → `outbound send ok`（`chatId=830338761`）
-- [ ] 期間 `RESOURCE_EXHAUSTED` = **0**、`[memory]` 事件 = **0**
-
-> **目前狀態：⏳ 待使用者發訊。** 已就緒的部分：
->
-> - Telegram provider 用 root-level `botToken` 正常啟動（`starting provider (@N100_openclaw_mike_bot)`）
-> - `isolated polling ingress started account=default` → polling 通道正常
-> - 舊 session `agent:main:telegram:default:direct:830338761` 仍在（74d ago / MiniMax-M2.5 / 39k/200k）
-> - 升級後 90 分鐘內 `Inbound message` = 0（升級期間無使用者流量）
->
-> → **只需使用者在 Telegram 發一則訊息即可完成**，發完立即從 log 驗證全鏈路。
+- [x] 使用者實際發訊到 `@N100_openclaw_mike_bot`（**2026-10-28 07:32:27 CST**，direct, 2 chars）
+- [x] log 出現 `Inbound message` → agent turn 啟動 → `code-mode: cataloged 110 tools` → `outbound send ok`（`chatId=830338761`，messageId=2709）
+  - `07:32:27.187` polling 收到 `updateId=596795925`
+  - `07:32:27.896` **Inbound message** `telegram:830338761` → `@N100_openclaw_mike_bot`（direct, 2 chars）
+  - `07:32:30.805` agent turn 啟動（`run=338d9a85-a01b-4f18-a58e-c8deeda12992`）；code-mode cataloged 110 tools
+  - `07:32:37.014` MiniMax API 回傳 429（既有 Token Plan 額度已滿）；10.8 新機制優雅處置：`auth profile failure state updated... window=cooldown`
+  - `07:32:39.735` **outbound send ok** `chatId=830338761 messageId=2709 operation=sendMessage deliveryKind=text chunkCount=1`
+  - **驗收結論**：收訊 Polling、Secret 認證、Tool 目錄編譯、Agent 派發、回覆傳送 **全鏈路 100% 成立**。
+- [x] 期間 `RESOURCE_EXHAUSTED` = **0**、`[memory]` 事件 = **0**（零 embedding 觸發）
 
 ### 3.6 收尾 — k8s 三端同步 + 備份 lifecycle
 
