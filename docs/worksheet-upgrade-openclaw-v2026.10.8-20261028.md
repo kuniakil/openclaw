@@ -522,7 +522,46 @@ kubectl -n openclaw rollout status deploy/openclaw-gateway
       → 備份排除規則本來就排除 reindex lock / shadow DB，且升級期間未跑 memory index
 - [x] 容器內暫存 `/home/node/.openclaw/tmp/backup-20261028` 已清除
 
-### 3.7 未結案項（結轉）
+### 3.7 Agent 自主升級後健康檢查（經 Gateway 執行，2026-10-28 09:35–09:5x）
+
+> 由 openclaw 自己的 agent（`openclaw agent --agent main --message-file …`，**經 Gateway、不帶 `--local`**，
+> 因此與 Gateway 共用同一份 Gemini 限速佇列）執行升級後唯讀健康檢查。
+> **執行位置是關鍵**：第一版提示詞過於細碎（11 組檢查各下多道指令），900s 內跑不完、
+> 63 個 tool call 後 timeout。改版後由主機端提供唯讀採集腳本 `/tmp/health-check-10.8.sh`，
+> agent 只需執行一次腳本 + 判讀，順利在時限內完成。
+
+- [x] **A–K 全部核心項目 OK**（agent 自評：升級驗收 = **通過**，無阻斷項目）
+  - A 版本 `2026.10.8` / `2026.10.8` / Node `v24.22.1` 三者一致
+  - B Gateway 啟動 log 佐證 **17 plugins**（agent 正確指出 `plugins list` 的 45/72 是全目錄計數、非載入數）
+  - C doctor error 級 = **0**（14 項 warning/notice 逐條原文 + 歸因）
+  - D 自訂層全數存活（locale `en_US.utf8`/`zh_TW.utf8`、faster_whisper 1.2.1、edge_tts 7.3.1、
+    ffmpeg、rsync、sshd、`entrypoint-ssh.sh` 0755）
+  - E 自訂 patch 命中數 Gemini pacing **2** / gemini 併發鎖 **1**
+  - F agent DB `uv=25`/`qc=ok`、state DB `uv=20`/`qc=ok`、quarantine `uv=2`/`qc=ok`
+  - G 記憶體索引在 **agent DB**（非 state DB）：chunks 2245 / sources 180 / fts 2245 / cache 3244 / standing_intents 0
+  - H sessions 含 `agent:main:main` 與 `agent:main:telegram:default:direct:830338761`
+  - I 記憶體趨勢平／微降
+  - J log fatal/panic/unhandled/MigrationRequired/degraded 全 = 0
+  - K stale lease → `agent database recovered` 自動復原閉環；Telegram provider + polling 正常
+- [x] **約束遵守**：全程唯讀——未觸發 embedding（無 memory index/search/reset、無 `agent --local`、
+      無 `status --deep`）、doctor 未 `--fix`、未重啟、未刪檔、未回傳憑證值、未遞迴 agent
+
+**主機端複驗 agent 報告（5 項需觀察 + 4 項超出視線）**
+
+| #   | Agent 的說法                                                                       | 主機端複驗                                                                                                                                                                                                                                                                                                                                     | 判定                    |
+| --- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| 1   | Pod image digest、rollout、舊 pod 殘留                                             | `imageID` = `sha256:155bff25...` **與 build manifest digest 完全一致**；11 個 RS 中僅 `7d44bbf895` 為 `1/1`，其餘 10 個皆 `0`；`RESTARTS 0`                                                                                                                                                                                                    | ✅ 可接受               |
+| 2   | 容器內「No successful backup is recorded」                                         | 主機端 `/home/kuniaki/backup-openclaw-20261028`（**294M**）存在 → 容器內看不到 host home，**非檔案遺失**                                                                                                                                                                                                                                       | ✅ 可接受               |
+| 3   | doctor cron 面板 100% 失敗：`file lock timeout for openclaw.sqlite.cron-authority` | **歸因需修正**：lock 檔內容 `pid: 7` = **活著的 gateway 主行程**（非 agent 所稱的「殘留、PID 90 已退出」）。doctor 為獨立行程，Gateway 自 pod 啟動即持有該 lock → 取得逾時。**但 10.7→10.8 `src/cron/store/`、`src/commands/doctor/cron/`、`src/state/` 讀取路徑 diff 全為空**，該 doctor 檢查自 2026-07-03（#99211）即存在 → **非 10.8 迴歸** | 🟢 需觀察（非升級造成） |
+| 4   | 記憶體絕對值比基線高 3–4%                                                          | 主機端複測 `memory.current` **2,592,550,912 → 2,592,473,088 → 2,592,817,152 B ≈ 2.41 GiB**（比 agent 報告時的 2.78 GiB **更低**）→ 趨勢持續下降。`memory.max=max`，host 30G / used 15G / available 15G                                                                                                                                         | 🟢 可接受               |
+| 5   | 3 筆 dead-letter 為 123–125 天前                                                   | 唯讀查 `channel_ingress_events`：`failed` **3 筆**（`pod_restart_crash` 125.1d、`pod_restart_crash_2` 125.0d、`Stuck event cleared due to bot migration` 122.7d），`completed` **72 筆**                                                                                                                                                       | ✅ 可接受               |
+| 6   | dreaming / cron 排程未受影響                                                       | `dreaming/{light,deep}/` **今日 03:00 有產出**（`2026-10-28.md`）；`openclaw cron list` 2 個 job 均有正常 last/next（`memory-core` dreaming `last=7h ago status=ok`）                                                                                                                                                                          | ✅ 可接受               |
+| 7   | 記憶體索引增量非重建                                                               | 索引持續增量（2239→2245→**2256** chunks），`memory_index_chunks_fts` **恆等於 chunks**，無 `reindex` shadow table 殘留；近 2h `RESOURCE_EXHAUSTED` 真實命中 = **0**                                                                                                                                                                            | ✅ 可接受               |
+| 8   | —                                                                                  | 近 2h log 唯一 `RESOURCE_EXHAUSTED` grep 命中是 **agent 自己回覆文字的 echo**（第 150 行），真實事件 0                                                                                                                                                                                                                                         | ✅ 可接受               |
+
+- [x] **Agent 結論：升級驗收 = 通過**，無阻斷驗收項目
+
+### 3.8 未結案項（結轉）
 
 - [ ] **跨行程限速技術債**（`geminiEmbeddingQueue` 為 module 層級狀態；根治需 lock file / SQLite 協調
       或改走 Gateway RPC）—— 上游未修，非本次迴歸
@@ -536,6 +575,15 @@ kubectl -n openclaw rollout status deploy/openclaw-gateway
 - [ ] **Telegram 群組未設定**（`channels.telegram.groups` 空，`groupPolicy=allowlist`）
       —— 群組訊息會被丟棄；DM 不受影響。是否要開群組由使用者決定
 - [ ] **3 筆 dead-lettered ingress event**（125d/125d/123d 前）—— 歷史殘留，`doctor` 可檢視
+- [ ] **doctor cron 面板讀不到 legacy cron store**（`file lock timeout for openclaw.sqlite.cron-authority`）
+      —— 10.8 新觀察到（歷次升級記錄未見）。已定性：**doctor 獨立行程 vs Gateway（pid 7）持有 lock**，
+      且 10.7→10.8 cron/state 讀取路徑 diff 全空、該檢查自 2026-07-03 即存在 → **非 10.8 迴歸**。
+      cron 實際排程正常（dreaming 今日 03:00 產出、2 job last/next 正常）。
+      → 若日後有人跑 `doctor --fix`，**別讓它動 cron store**
+- [ ] **記憶體趨勢**：驗收時已回落至 ~2.41 GiB（升級前基線 2.67 GiB），**低於基線**。
+      上游 #185578（heap floor 只增不減）仍未結案 → 建議 24–72h 再取樣一次
+- [ ] **10 個已縮減至 0 的 ReplicaSet 物件**殘留在 deployment 的 RS 清單中（正常歷史殘留，
+      非孤兒 Pod；`kubectl get rs` 可見 11 個 RS，僅 1 個 active）—— 無需處理，僅記錄
 
 ---
 
