@@ -8,10 +8,10 @@
 
 ## 🚦 執行前提（Go-Sign Gate）
 
-- [ ] **使用者已明確核准開始執行 Phase 2**（本檔完成前不得改 code / 換分支 / commit / dispatch）
-- [ ] 升級期間不在 Mac 跑 `pnpm check:changed` / `tsgo` / `vitest` / `docker build`（全交給 GitHub Actions）
-- [ ] 升級期間不執行 `openclaw memory index` / `memory search` / `memory reset` / `agent --local`
-- [ ] 任何 `gh run watch`（10+ 分鐘）派給背景子代理，主迴圈保持可回應
+- [x] **使用者已明確核准開始執行 Phase 2**（2026-10-30，並指定「做輕量線上快照」）
+- [x] 升級期間不在 Mac 跑 `pnpm check:changed` / `tsgo` / `vitest` / `docker build`（全交給 GitHub Actions）
+- [x] 升級期間不執行 `openclaw memory index` / `memory search` / `memory reset` / `agent --local`
+- [x] 任何 `gh run watch`（10+ 分鐘）派給背景子代理，主迴圈保持可回應
 
 > [!IMPORTANT]
 >
@@ -187,9 +187,9 @@ session.store / agents.defaults.sessionStore : 未設定 → 走預設路徑
 - [x] `git status -sb` → `## my-config-v2026.10.8...origin/my-config-v2026.10.8`（僅本 worksheet 為 untracked）
 - [x] 官方 baseline tag 已 fetch
       `bash
-    git fetch upstream refs/tags/v2026.10.9:refs/tags/upstream-v2026.10.9 --no-tags
-    git rev-parse 'upstream-v2026.10.9^{commit}'   # 8b18b5578f66eab1501cba4cef2310d88bfb9a41
-    `
+  git fetch upstream refs/tags/v2026.10.9:refs/tags/upstream-v2026.10.9 --no-tags
+  git rev-parse 'upstream-v2026.10.9^{commit}'   # 8b18b5578f66eab1501cba4cef2310d88bfb9a41
+  `
 - [x] `schemaVersions` 對比：`10.8 {state:20, agent:25}` == `10.9 {state:20, agent:25}` → **無 migration**
 - [x] `engines.node` / `packageManager` / `updateAdmissionProtocol` 對比 → 不變
 - [x] 官方 Release Notes 已審閱（無 breaking / 無 migration）
@@ -270,12 +270,12 @@ git cherry-pick -x $(git log --reverse --format=%h upstream-v2026.10.8..my-confi
 
 ### 2.6 更新本 worksheet 並 commit
 
-- [ ] 勾選 Phase 2 已完成項目 → `git add docs/worksheet-upgrade-openclaw-v2026.10.9-20261030.md` → commit
+- [x] 勾選 Phase 2 已完成項目 → commit `3dd7277f877`（`docs: add v2026.10.9 upgrade worksheet and mark Phase 2 preparation completed`）
 
 ### 2.7 Push 分支
 
-- [ ] `git push -u origin my-config-v2026.10.9`
-- [ ] 確認 `origin/my-config-v2026.10.9` == local HEAD
+- [x] `git push -u origin my-config-v2026.10.9`
+- [x] `origin/my-config-v2026.10.9` == local HEAD == `3dd7277f877fb5fd0cc6cab07210a7e24d70aea2`
 
 ### 2.8 觸發 build（分支觸發模型）
 
@@ -284,19 +284,25 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
   --ref my-config-v2026.10.9 -f tag=v2026.10.9 -f platforms=all
 ```
 
-- [ ] dispatch 成功（若回 `HTTP 422 Actions has been disabled` → 去
-      `https://github.com/kuniakil/openclaw/actions` 點橫幅重新啟用，**不要**重試、不要清 cache）
-- [ ] `gh run list --workflow=docker-release.yml --limit 1 --json databaseId,event,headBranch,headSha,status`
-  - `event` = `workflow_dispatch`
-  - `headBranch` = `my-config-v2026.10.9`
-  - `headSha` = **我們分支的 commit**（非官方 `8b18b5578f66`）
-- [ ] `gh run watch <run_id>` → success（⭐ 派背景子代理監看）
-  - `prepare` / `build-and-push (amd64)` / `build-and-push (arm64)` / `merge`
+- [x] dispatch 成功 → **run ID `40998752900`**（未觸發 422，Actions 未被停用）
+- [x] `gh run list --workflow=docker-release.yml --limit 1 --json databaseId,event,headBranch,headSha,status`
+  - `event` = `workflow_dispatch` ✅
+  - `headBranch` = `my-config-v2026.10.9` ✅
+  - `headSha` = `3dd7277f877fb5fd0cc6cab07210a7e24d70aea2`（**我們的** commit，非官方 `8b18b5578f66`）✅
+- [x] `gh run watch` → conclusion: **success**（⭐ 派背景子代理監看，主迴圈未阻塞）
+  - `prepare` ✅ 4s
+  - `build-and-push (linux/arm64, ubuntu-24.04-arm)` ✅ 9m24s
+  - `build-and-push (linux/amd64, ubuntu-latest)` ✅ 10m38s
+  - `merge` ✅ 18s
 
 ### 2.9 Build 結果驗證
 
-- [ ] 8 個 tag 全部存在：`2026.10.9`、`v2026.10.9`、`2026.10.9-slim`、`v2026.10.9-slim`、`latest`、`slim`、`main`、`main-slim`
-- [ ] multi-arch manifest 含 **amd64 + arm64**；記錄 manifest list digest
+- [x] 8 個 tag 全部存在：`2026.10.9` ✅ `v2026.10.9` ✅ `2026.10.9-slim` ✅ `v2026.10.9-slim` ✅
+      `latest` ✅ `slim` ✅ `main` ✅ `main-slim` ✅
+- [x] multi-arch manifest 含 **amd64 + arm64**
+  - manifest list digest：`sha256:2a7f4a680fd65396aec9b40c66227271be4aa0b5f16af9da75e74126ec047429`
+  - amd64 digest：`sha256:63ce8ae5d5e12645c9c205eab16bc74c0d87185a7f78e8a288940812de8e7622`
+  - arm64 digest：`sha256:30e4c04dd679a677f1201558b6c6032a947b573873e9745f7b313cfaa4c7bbe6`
 
 ---
 
@@ -304,58 +310,89 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 
 ### 3.1 K3s 部署
 
-- [ ] **Mac 編輯** `~/kubernetes/openclaw/overlays/n100/kustomization.yaml`：`2026.10.8` → `2026.10.9`
-- [ ] `kubectl kustomize` 預覽 → `ghcr.io/kuniakil/openclaw:2026.10.9`
-- [ ] Mac commit + push `my-k8s` main → N100 `git pull origin main`
-- [ ] `kubectl apply -k` → `rollout status` → 新 Pod `1/1 Running`、`RESTARTS 0`
-- [ ] 三端一致：Mac manifest / N100 manifest / 線上 Pod image 與 digest 一致
+- [x] **Mac 編輯** `~/kubernetes/openclaw/overlays/n100/kustomization.yaml`：`2026.10.8` → `2026.10.9`
+- [x] `kubectl kustomize` 預覽 → `ghcr.io/kuniakil/openclaw:2026.10.9`
+- [x] Mac commit + push `my-k8s` main（`6b1f671`）→ N100 `git pull origin main`（HEAD `6b1f671`）
+- [x] `kubectl apply -k` → `rollout status` → 新 Pod `openclaw-gateway-7759d86874-kq5gc` `1/1 Running`、**RESTARTS 0**
+      （image pull 1m30s，image 大小 1,205,690,351 B）
+- [x] 三端一致：Mac manifest / N100 manifest / 線上 Pod 皆 `2026.10.9`
+  - 線上 `imageID` = `ghcr.io/kuniakil/openclaw@sha256:2a7f4a680fd65396aec9b40c66227271be4aa0b5f16af9da75e74126ec047429`
+    （**與 build manifest list digest 完全一致**）
+  - Mac / N100 `~/kubernetes` git HEAD 皆 `6b1f671`
 
 #### 3.1.1 無 migration 驗證（含 10.9 新增復原路徑）
 
-- [ ] 啟動 log **無** `MigrationRequired` / `schema version` / `agent database remains degraded`
-- [ ] **FTS 專項**：grep `malformed inverted index` / `FTS` / `rebuild` / `quarantine`
-      → 若出現自動 repair，確認是 `agent database recovered` 閉環且 `PRAGMA quick_check` = ok
-- [ ] **transcript archive 專項**：grep `transcript` / `archive` / `String` / `import`
-      → 確認 299 MB archive 無新錯誤；無 `Invalid string length` / `heap out of memory`
-- [ ] 線上 agent DB `user_version` = **25**、state DB = **20**；兩者 `quick_check` = **ok**
-- [ ] `openclaw doctor`（read-only）→ Doctor complete；error 級 = 0；既有 notice/warning 逐項歸因
-- [ ] 啟動後 15 分鐘內 `fatal|panic|unhandled` = 0、`RESOURCE_EXHAUSTED` = 0、`[memory]` = 0
+- [x] 啟動 log **無** `MigrationRequired` / `schema version` / `agent database remains degraded`（grep = **0**）
+- [x] **FTS 專項**：grep `malformed inverted index` / `FTS5` / `rebuild` / `quarantine` = **0**；
+      啟動 admission log 明確為 `integrityGateOutcome=healthy`、**`repairedIndexCount=0`**
+      → 未觸發任何 FTS 重建（符合預期：Node 仍為 `v24.22.1`）
+- [x] **transcript archive 專項**：grep `transcript` / `Invalid string length` / `heap out of memory` = **0**
+      → 299 MB archive 未觸發 migration 路徑
+- [x] 線上 agent DB `user_version` = **25**、state DB = **20**、quarantine = **2**；三者 `quick_check` = **ok**
+- [x] `openclaw doctor --json`（read-only）→ `ok:false` 僅因 2 個 **既有 config warning**（見 3.1.1.1），**error = 0**
+- [x] 容器啟動後 25 分鐘：`ERROR|FATAL|panic` = **0**、`RESOURCE_EXHAUSTED` = **0**、`[memory]` = **0**
+
+##### 3.1.1.1 Doctor 兩則 warning（皆為既有 config 狀態，非 10.9 迴歸）
+
+| Warning                           | 歸因                                                                                  |
+| --------------------------------- | ------------------------------------------------------------------------------------- |
+| `config.plaintext_secrets`        | `skills.entries.web-search.apiKey`、`channels.telegram.botToken` 仍為明碼；與版本無關 |
+| `gateway.bind_network_accessible` | `--bind lan`（我們刻意用 K3s Service + Ingress 對外）；既有部署設定                   |
+
+> 本次**不執行** `openclaw doctor --fix`（屬狀態變更，非升級必要項）。明碼 secret 遷移與 bind 策略另案評估。
 
 #### 3.1.2 Plugin / 版本
 
-- [ ] Gateway 啟動 log → **17 plugins**（與 10.8 相同）
-- [ ] 無 admission 失敗、無 plugin quarantine
-- [ ] `/app/package.json` = `2026.10.9`、`openclaw --version` = `OpenClaw 2026.10.9`、`node v24.22.1`
-- [ ] `/health` = 200 `{"ok":true,"status":"live"}`
+- [x] Gateway 啟動 log → **17 plugins**（`anthropic, canvas, cua-computer, device-pair, file-transfer,
+    geolocation, github, google, linux-node, memory-core, microsoft, ollama, openai, talk-voice,
+    tavily, telegram, xai`；14.0s）
+- [x] 無 admission 失敗、無 plugin quarantine
+- [x] `/app/package.json` = `2026.10.9`、`openclaw --version` = `OpenClaw 2026.10.9`、`node v24.22.1`
+- [x] `/health` = 200 `{"ok":true,"status":"live"}`
 
 #### 3.1.3 行為變更觀察（10.9 新增）
 
-- [ ] `tools.fs.workspaceOnly` 未設定 → 檔案讀寫行為不變（抽驗 workspace 內一次讀/寫）
-- [ ] `tools.media`（audio）仍可運作（我們用 cli whisper model）
-- [ ] MCP CLI inspection 不外洩憑證（若日常有用 MCP CLI，抽驗輸出不含 token）
-- [ ] `standing_intents` 仍為 **0**
-- [ ] `openclaw sessions list` 正常（含 `agent:main:main` 與 Telegram direct session）
+- [x] `tools.fs` **未設定** → `workspaceOnly` 新套用邏輯不生效，檔案工具行為不變
+      （已由 11:56 的真實 Telegram turn 驗證工具鏈可用）
+- [x] `tools.media` keys = `audio, models`（不變）；`whisper` STT 設定仍在
+- [x] MCP CLI inspection 憑證隱藏：本次未使用 MCP CLI（無相關操作），僅記錄為安全改善
+- [x] `standing_intents` 仍為 **0**
+- [x] `openclaw sessions list` → **6** 個 session（`agent:main:main`、
+      `agent:main:telegram:default:direct:830338761`、3×cron、1×node）
 
 #### 3.1.4 自訂功能存活
 
-- [ ] `locale -a` → `en_US.utf8` / `zh_TW.utf8`
-- [ ] `whisper` 1.2.1、`edge-tts` 7.3.1、`ffmpeg`、`rsync`、`/usr/sbin/sshd`、`entrypoint-ssh.sh` 0755
-- [ ] Doctor 仍偵測 `Local STT auto-selection: whisper`
-- [ ] 容器內 `MIN_GEMINI_EMBEDDING_INTERVAL_MS`（2 處）、`provider?.id === "gemini"`（1 處）仍命中
-- [ ] 自訂 5 檔與 10.8 逐檔 byte-identical（`git rev-parse` 比對）
+- [x] `locale -a` → **`en_US.utf8`** / **`zh_TW.utf8`**
+- [x] `faster_whisper` = **1.2.1**、`edge_tts` = **7.3.1**、`/usr/bin/ffmpeg`、`/usr/bin/rsync`
+- [x] `/usr/sbin/sshd` 存在（0755）；`/app/docker/entrypoint-ssh.sh` mode **0755**（938 B）
+- [x] Doctor 仍偵測 `Local STT auto-selection: whisper`
+- [x] 容器內 `MIN_GEMINI_EMBEDDING_INTERVAL_MS` = **2** 處命中、`provider?.id === "gemini"` = **1** 處命中
+- [x] 自訂 7 檔與 `my-config-v2026.10.8` **逐檔 byte-identical**（`git rev-parse` 全部 SAME）
 
 ### 3.2 記憶體索引狀態確認（**唯讀，不重建**）
 
-- [ ] 五表計數：`memory_index_chunks` / `_sources` / `_chunks_fts` / `memory_embedding_cache` / `standing_intents`
-      → 應為**增量成長**（chunks 與 fts、cache 對應），非歸零
-- [ ] 近 1 小時 `RESOURCE_EXHAUSTED` = 0、`[memory]` 事件 = 0
-- [ ] 全程未執行 `openclaw memory index` / `memory search` / `memory reset` / `agent --local`
+- [x] 五表計數**升級前後完全相同**（以升級前快照 `backup-openclaw-20261030/db/agent.sqlite` 直接比對）
+
+  | 表                        | 升級前快照 | 升級後線上 |
+  | ------------------------- | ---------- | ---------- |
+  | `memory_index_chunks`     | 1278       | **1278**   |
+  | `memory_index_sources`    | 184        | **184**    |
+  | `memory_index_chunks_fts` | 1278       | **1278**   |
+  | `memory_embedding_cache`  | 3289       | **3289**   |
+  | `standing_intents`        | 0          | **0**      |
+
+  > 注：10.8 worksheet 於 2026-10-28 記錄 chunks=2256，本次升級**前**（10-30 11:39 快照）已是 1278，
+  > 代表這 2 天內索引曾變動（非本次 10.9 造成）。本次升級前後計數**零差異**，是更強的證據。
+
+- [x] 近 1 小時 `RESOURCE_EXHAUSTED` = **0**、`[memory]` 事件 = **0**（本次升級期間零 embedding 請求）
+- [x] 全程未執行 `openclaw memory index` / `memory search` / `memory reset` / `agent --local`
 
 ### 3.3 記憶體趨勢觀察
 
-- [ ] cgroup `memory.current` 多次取樣，判斷**趨勢**（升級前 ~2.4–2.7 GiB 區間）
-- [ ] `rss_threshold` warning 僅在重複出現或單調上升時才升級為事故
-- [ ] 上游 #185578（heap floor）仍為未結案議題 → 不以單點定罪
+- [x] cgroup `memory.current` 三次取樣：**1,842,098,176 → 2,174,054,400 → 1,803,563,008 B**
+      （≈ 1.72–2.02 GiB）→ **低於**升級前 2.4–2.6 GiB 區間，無單調上升
+- [x] 啟動 log 有 `MaxListenersExceededWarning`（10.5 起既有現象），非 10.9 迴歸
+- [x] 上游 #185578（heap floor）仍為未結案議題 → 不以單點定罪
 
 ### 3.4 回滾備案
 
@@ -365,21 +402,26 @@ kubectl -n openclaw set image deployment/openclaw-gateway \
 kubectl -n openclaw rollout status deploy/openclaw-gateway
 ```
 
-- [ ] 確認 10.8 / 10.9 同為 agent schema 25 → **不需**還原 DB、不需 doctor
-- [ ] 10.8 image tag 仍在 registry（`docker buildx imagetools inspect` 可解析）
+- [x] 確認 10.8 / 10.9 同為 agent schema 25 → **不需**還原 DB、不需 doctor
+- [x] `ghcr.io/kuniakil/openclaw:2026.10.8` 仍可解析（`docker buildx imagetools inspect` OK）
 
 ### 3.5 Telegram 端到端真實訊息往返
 
-- [ ] 使用者實際發訊到 `@N100_openclaw_mike_bot`
-- [ ] log 出現 `Inbound message` → agent turn → `outbound send ok`（記 chatId / messageId / 時間）
-- [ ] 期間 `RESOURCE_EXHAUSTED` = 0、`[memory]` 事件 = 0
+- [x] 使用者實際發訊到 `@N100_openclaw_mike_bot`（**2026-10-30 11:56:38 CST**，direct, 7 chars）
+- [x] 完整鏈路：
+  - `11:56:38.305` polling 收到 `updateId=596795931`
+  - `11:56:38.820` **Inbound message** `telegram:830338761` → `@N100_openclaw_mike_bot`
+  - `11:56:41.611` `models.list` 回應（agent turn 進行中）
+  - `11:56:46.760` **outbound send ok** `chatId=830338761 messageId=2719 chunkCount=1`
+- [x] 期間 `RESOURCE_EXHAUSTED` = **0**、`[memory]` 事件 = **0**
 
 ### 3.6 收尾
 
-- [ ] Mac / N100 `~/kubernetes` git HEAD 一致；Pod imageID = build manifest digest
-- [ ] 備份 lifecycle：確認是否清理 `backup-openclaw-20261028`（需使用者授權）
-- [ ] 無 `*.memory-reindex-*` orphan shadow DB；容器內暫存目錄已清除
-- [ ] 更新本 worksheet 勾選與結果，commit
+- [x] Mac / N100 `~/kubernetes` git HEAD 一致（`6b1f671`）；Pod imageID = build manifest digest
+- [x] 備份 lifecycle：`backup-openclaw-20261028`（294M）與 `backup-openclaw-20261030`（280M）**皆保留**
+      （待使用者決定清理舊份）
+- [x] 無 `*.memory-reindex-*` orphan shadow DB；容器內暫存目錄已清除
+- [x] 更新本 worksheet 勾選與結果，commit
 
 ### 3.7 未結案項（結轉自 10.8）
 
@@ -390,6 +432,8 @@ kubectl -n openclaw rollout status deploy/openclaw-gateway
 - [ ] Telegram 群組未設定（`channels.telegram.groups` 空）
 - [ ] 3 筆 dead-lettered ingress event（歷史殘留）
 - [ ] doctor cron 面板 `file lock timeout for openclaw.sqlite.cron-authority`（doctor 獨立行程 vs Gateway 持鎖，非迴歸）
+- [ ] **2 個 config warning**（`config.plaintext_secrets`：`web-search.apiKey`、`channels.telegram.botToken` 明碼；
+      `gateway.bind_network_accessible`：`--bind lan`）—— 既有部署決策，非 10.9 迴歸；secret 遷移另案評估
 
 ---
 
