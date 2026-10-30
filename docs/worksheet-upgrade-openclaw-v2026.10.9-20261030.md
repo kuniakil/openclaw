@@ -463,6 +463,108 @@ kubectl -n openclaw rollout status deploy/openclaw-gateway
 
 ---
 
+## Phase 4: CJK 召回優化（FTS5 `trigram` tokenizer）
+
+> 起因：3.2.1 召回抽查發現純中文多詞查詢 `textScore=0`。使用者核准後於 **2026-10-30 13:0x CST** 執行。
+
+### 4.1 決策依據（線上語料實測）
+
+| 指標             | 值                          |
+| ---------------- | --------------------------- |
+| chunks / 文字量  | 1,295 / 1,059,627 B         |
+| 含 CJK 的 chunk  | **1,206（93%）**            |
+| embedding cache  | 3,317 筆（涵蓋全部 chunk）  |
+| `< 3` 字元 chunk | 0                           |
+| 舊 FTS tokenizer | `unicode61`（無法切分 CJK） |
+
+語料幾乎全中文、`unicode61` 只把整段 CJK 視為單一 token → **關鍵字通道形同關閉**。
+
+### 4.2 根因驗證（unicode61 舊快照實測）
+
+以 `backup-openclaw-20261030/db/agent.sqlite`（unicode61 時代）直接跑 FTS5：
+
+| MATCH query        | rows  | 解讀                                |
+| ------------------ | ----- | ----------------------------------- |
+| `大腸鏡`           | 9     | 整段 CJK run 可命中                 |
+| `胃鏡`             | 8     | 同上                                |
+| `大`               | 1     | 單字 token 幾乎不存在               |
+| `鏡`               | 0     | 單字 token 不存在                   |
+| `大 AND 腸 AND 鏡` | **0** | **query-side unigram 展開必然落空** |
+
+→ 上游 CJK 展開會拆成 unigram 並 `AND` 起來，但 `unicode61` 索引裡根本沒有單字 token，
+所以**所有中文查詢的 keyword 通道恆為 0**（與 3.2.1 觀察一致）。這是既有缺陷，非 10.9 迴歸。
+
+### 4.3 變更內容
+
+`/home/kuniaki/openclaw/.openclaw/openclaw.json`（備份 `openclaw.json.bak-20261030-trigram`）：
+
+```diff
+   "memory": {
+     "search": {
+-      "provider": "gemini"
++      "provider": "gemini",
++      "store": { "fts": { "tokenizer": "trigram" } }
+     }
+   }
+```
+
+- 只動 tokenizer，`provider` / `model` / chunking（`chunkTokens=400`、`overlap=80`、`chunkingVersion=5`）一律不動
+- 上游設定來源：#38270（closed, commit `3ce48aff660`）、`docs/reference/memory-config.md`、
+  `src/config/zod-schema.memory-search.ts:50-62`
+
+### 4.4 執行步驟
+
+- [x] 備份 config → `openclaw.json.bak-20261030-trigram`
+- [x] 以 JSON round-trip 寫入（diff 僅 1 段新增，檔權限維持 `0600`）
+- [x] `kubectl -n openclaw rollout restart deploy/openclaw-gateway` → `openclaw-gateway-bdd8b987f-jdwjr`
+- [x] 啟動時自動重建 FTS（`memory status --index` 觸發 sync，`fts_tokenizer` mismatch → 重建）
+- [x] `memory_index_meta.ftsTokenizer = "trigram"`；
+      `sqlite_master` 確認 `tokenize='trigram case_sensitive 0'`（`memory_index_chunks_fts`、`memory_index_paths_fts`）
+
+### 4.5 Gemini 呼叫 = 0（證據）
+
+| 檢查項                                 | 結果              |
+| -------------------------------------- | ----------------- |
+| `memory status --index` 期間 chunk 數  | 1,295（**不變**） |
+| embedding cache rows                   | 3,317（**不變**） |
+| gateway log `batchEmbedContents`       | **0** 次          |
+| gateway log `RESOURCE_EXHAUSTED` / 429 | **0** 次          |
+| gateway log `ERROR` / `FATAL` / panic  | **0** 次          |
+
+chunking 參數未變 → chunk hash 不變 → cache 全命中，未觸發任何 Gemini embedding 請求。
+
+### 4.6 召回驗收（同一語料、同一 CLI）
+
+| 查詢                                 | unicode61（3.2.1）                  | trigram（4.6）                                                                                       |
+| ------------------------------------ | ----------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `大腸鏡 清腸 準備 術後`              | 醫療檔**未進 top-6**、`textScore=0` | **top-1 = `memory/2026-10-26.md`**（score 0.706 / text **0.803**）                                   |
+| `大腸鏡 報告`                        | 未測                                | top-1/3 = `memory/2026-10-07.md`、**`memory/medical/2026-10-07-procedure.md`**（text 0.833 / 0.844） |
+| `記憶體 RSS 觀察`                    | 未測                                | top-4 全為 `memory/dreaming/light/2026-10-29.md`（text 0.737–0.816）                                 |
+| `Gemini embedding 429 限速 佇列`     | 優（0.886 / text 0.815）            | 優（0.886 / text 0.796）— 無退步                                                                     |
+| `colonoscopy bowel prep before exam` | 中（醫療檔第 6）                    | 中（ dreaming 檔 text 0.806–0.819 領先）                                                             |
+
+### 4.7 已知限制（2 字詞）
+
+- trigram FTS5 **無法 MATCH < 3 code points**（上游 #170997 同結論）：
+  線上實測 `MATCH '胃鏡'` → 0 rows（但 `LIKE '%胃鏡%'` → 21 chunks、`'清腸'` → 8、`'大腸鏡'` → 23）
+- `planKeywordSearch` 會把 < 3 字詞放進 `substringTerms` 走 LIKE 通道，但該通道
+  **只確認召回、不給 BM25 分數**（`manager-search.ts:355`：`textScore = usedMatch ? … : 0`）
+  → 純 2 字詞查詢（如 `胃鏡`、`清腸 瀉藥`）排序仍由向量主導，正確檔案落在 top-9 之後
+- **實務 workaround**：中文查詢盡量含 **≥ 3 字詞組**（`大腸鏡 報告` ✅；`胃鏡 檢查` ❌）或整詞不切開（`胃鏡檢查`）
+
+### 4.8 回滾
+
+```bash
+cp /home/kuniaki/openclaw/.openclaw/openclaw.json.bak-20261030-trigram \
+   /home/kuniaki/openclaw/.openclaw/openclaw.json
+kubectl -n openclaw rollout restart deploy/openclaw-gateway
+```
+
+- 回到 `unicode61` 後啟動會再次重建 FTS（0 embedding 呼叫）
+- 極端情況可從 `backup-openclaw-20261030`（280M）還原 agent DB
+
+---
+
 ## 🔖 關鍵參考
 
 - **官方 Release Notes:** https://github.com/openclaw/openclaw/releases/tag/v2026.10.9
