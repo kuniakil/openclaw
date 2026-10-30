@@ -344,8 +344,8 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 #### 3.1.2 Plugin / 版本
 
 - [x] Gateway 啟動 log → **17 plugins**（`anthropic, canvas, cua-computer, device-pair, file-transfer,
-  geolocation, github, google, linux-node, memory-core, microsoft, ollama, openai, talk-voice,
-  tavily, telegram, xai`；14.0s）
+geolocation, github, google, linux-node, memory-core, microsoft, ollama, openai, talk-voice,
+tavily, telegram, xai`；14.0s）
 - [x] 無 admission 失敗、無 plugin quarantine
 - [x] `/app/package.json` = `2026.10.9`、`openclaw --version` = `OpenClaw 2026.10.9`、`node v24.22.1`
 - [x] `/health` = 200 `{"ok":true,"status":"live"}`
@@ -395,6 +395,23 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 
 - [x] 近 1 小時 `RESOURCE_EXHAUSTED` = **0**、`[memory]` 事件 = **0**（本次升級期間零 embedding 請求）
 - [x] 全程未執行 `openclaw memory index` / `memory search` / `memory reset` / `agent --local`
+
+#### 3.2.1 召回抽查（升級後補跑，2026-10-30 13:0x）
+
+> 經使用者同意，僅執行唯讀 `openclaw memory search`（每次觸發 1 次 Gemini query embedding，pacing 4200 ms 生效）；
+> **未**執行 `memory index` / `memory reset`。3 次查詢期間 `RESOURCE_EXHAUSTED` / `429` = **0**，單次耗時 ~26 s。
+
+| 查詢                                 | 結果                                                                                     |
+| ------------------------------------ | ---------------------------------------------------------------------------------------- |
+| `Gemini embedding 429 限速 佇列`     | **優**：top-5 全命中 `MEMORY.md` 速率策略段落（score 0.886 / vector 0.837 / text 0.815） |
+| `colonoscopy bowel prep before exam` | **中**：`memory/medical/2026-10-07-procedure.md` 排第 6（score 0.427，text 0.843）       |
+| `大腸鏡 清腸 準備 術後`              | **差**：醫療文件未進 top-6；top-1 為 dreaming 檔（0.677），其餘 `textScore=0`            |
+
+- 結論：索引與 embedding 正常（`memory/medical/2026-10-07-procedure.md` 有 20 chunks、0 個 null embedding），
+  但**純中文多詞查詢的召回偏弱**：`ftsTokenizer=unicode61` 無法切分 CJK，只有「空白/標點分隔的整段中文」
+  才會產生 text match，其餘全靠向量分數，舊文件因此被較新的 dreaming 檔壓過。
+- 屬**既有**限制（10.8 同樣設定），非 10.9 迴歸；workaround：中文查詢用短詞或英文關鍵字。
+  建議列為上游 follow-up（CJK tokenizer / trigram 或 query-side 斷詞）。
 
 ### 3.3 記憶體趨勢觀察
 
