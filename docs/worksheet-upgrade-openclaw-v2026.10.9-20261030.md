@@ -187,9 +187,9 @@ session.store / agents.defaults.sessionStore : 未設定 → 走預設路徑
 - [x] `git status -sb` → `## my-config-v2026.10.8...origin/my-config-v2026.10.8`（僅本 worksheet 為 untracked）
 - [x] 官方 baseline tag 已 fetch
       `bash
-  git fetch upstream refs/tags/v2026.10.9:refs/tags/upstream-v2026.10.9 --no-tags
-  git rev-parse 'upstream-v2026.10.9^{commit}'   # 8b18b5578f66eab1501cba4cef2310d88bfb9a41
-  `
+git fetch upstream refs/tags/v2026.10.9:refs/tags/upstream-v2026.10.9 --no-tags
+git rev-parse 'upstream-v2026.10.9^{commit}'   # 8b18b5578f66eab1501cba4cef2310d88bfb9a41
+`
 - [x] `schemaVersions` 對比：`10.8 {state:20, agent:25}` == `10.9 {state:20, agent:25}` → **無 migration**
 - [x] `engines.node` / `packageManager` / `updateAdmissionProtocol` 對比 → 不變
 - [x] 官方 Release Notes 已審閱（無 breaking / 無 migration）
@@ -344,8 +344,8 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 #### 3.1.2 Plugin / 版本
 
 - [x] Gateway 啟動 log → **17 plugins**（`anthropic, canvas, cua-computer, device-pair, file-transfer,
-    geolocation, github, google, linux-node, memory-core, microsoft, ollama, openai, talk-voice,
-    tavily, telegram, xai`；14.0s）
+  geolocation, github, google, linux-node, memory-core, microsoft, ollama, openai, talk-voice,
+  tavily, telegram, xai`；14.0s）
 - [x] 無 admission 失敗、無 plugin quarantine
 - [x] `/app/package.json` = `2026.10.9`、`openclaw --version` = `OpenClaw 2026.10.9`、`node v24.22.1`
 - [x] `/health` = 200 `{"ok":true,"status":"live"}`
@@ -383,6 +383,15 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
 
   > 注：10.8 worksheet 於 2026-10-28 記錄 chunks=2256，本次升級**前**（10-30 11:39 快照）已是 1278，
   > 代表這 2 天內索引曾變動（非本次 10.9 造成）。本次升級前後計數**零差異**，是更強的證據。
+  >
+  > **已定位（2026-10-30 補查）**：以 `backup-openclaw-20261028` 與 10-30 快照逐 source 比對，
+  > 落差 100% 來自 `sessions`（1271→300），`memory` 反而 961→978；且**單一檔案**造成全部差異
+  > ——`sessions/main/22054df4-….jsonl`（998 chunks / 734 KB）→ 0。該 transcript 早已於 2026-09-01
+  > 匯入 `session-sqlite-import-archive`（`.imported-1788225390697`），原 `.jsonl` 已不存在，
+  > 索引列在 10-28～10-30 期間被一般索引清理剪除。
+  > 兩份快照的 `chunkingVersion` 皆為 **5**、`chunkTokens=400`、平均 chunk 長度 815 vs 818
+  > → **不是重分塊**，也不是 10.9 的 transcript archive migration。內容仍在 session SQLite 與
+  > import archive 中，非資料遺失；僅影響該舊 session 的文字檢索召回。
 
 - [x] 近 1 小時 `RESOURCE_EXHAUSTED` = **0**、`[memory]` 事件 = **0**（本次升級期間零 embedding 請求）
 - [x] 全程未執行 `openclaw memory index` / `memory search` / `memory reset` / `agent --local`
