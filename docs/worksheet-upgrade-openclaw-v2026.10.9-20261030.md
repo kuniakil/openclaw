@@ -174,7 +174,7 @@ agent dir    : 539M（含 session-sqlite-import-archive 299M / 69 檔，2 檔 >1
 tools.fs     : 未設定（undefined）→ workspaceOnly 行為不變
 tools.media  : keys = audio, models
 session.store / agents.defaults.sessionStore : 未設定 → 走預設路徑
-備份         : /home/kuniaki/backup-openclaw-20261028（294M，10.8 升級前快照）
+備份         : /home/kuniaki/backup-openclaw-20261028（294M，10.8 升級前快照；**已於 2026-10-30 刪除**）
 磁碟         : / 586G / 1.8T（34%）
 ```
 
@@ -266,7 +266,7 @@ git cherry-pick -x $(git log --reverse --format=%h upstream-v2026.10.8..my-confi
   - [x] 容器內暫存目錄 `tmp/backup-20261030` 與 `/tmp/snapshot-openclaw.mjs` 已刪除
   - [x] 快照 `-shm` / `-wal` 空檔已清除（DB 已關閉，重新開啟時會自動建立）
   - [x] 磁碟 `/` 587G / 1.8T（34%）
-- [x] 舊備份 `backup-openclaw-20261028` 保留（待 10.9 驗收後再由使用者決定清理）
+- [x] 舊備份 `backup-openclaw-20261028` 於 2026-10-30 驗收後依使用者指示 **已刪除**（294M 釋放）
 
 ### 2.6 更新本 worksheet 並 commit
 
@@ -384,7 +384,7 @@ tavily, telegram, xai`；14.0s）
   > 注：10.8 worksheet 於 2026-10-28 記錄 chunks=2256，本次升級**前**（10-30 11:39 快照）已是 1278，
   > 代表這 2 天內索引曾變動（非本次 10.9 造成）。本次升級前後計數**零差異**，是更強的證據。
   >
-  > **已定位（2026-10-30 補查）**：以 `backup-openclaw-20261028` 與 10-30 快照逐 source 比對，
+  > **已定位（2026-10-30 補查）**：以 `backup-openclaw-20261028`（比對後已刪除）與 10-30 快照逐 source 比對，
   > 落差 100% 來自 `sessions`（1271→300），`memory` 反而 961→978；且**單一檔案**造成全部差異
   > ——`sessions/main/22054df4-….jsonl`（998 chunks / 734 KB）→ 0。該 transcript 早已於 2026-09-01
   > 匯入 `session-sqlite-import-archive`（`.imported-1788225390697`），原 `.jsonl` 已不存在，
@@ -444,8 +444,8 @@ kubectl -n openclaw rollout status deploy/openclaw-gateway
 ### 3.6 收尾
 
 - [x] Mac / N100 `~/kubernetes` git HEAD 一致（`6b1f671`）；Pod imageID = build manifest digest
-- [x] 備份 lifecycle：`backup-openclaw-20261028`（294M）與 `backup-openclaw-20261030`（280M）**皆保留**
-      （待使用者決定清理舊份）
+- [x] 備份 lifecycle：`backup-openclaw-20261028`（294M）**已刪除**（2026-10-30，使用者指示）；
+      `backup-openclaw-20261030`（280M）保留為現行回滾點
 - [x] 無 `*.memory-reindex-*` orphan shadow DB；容器內暫存目錄已清除
 - [x] 更新本 worksheet 勾選與結果，commit
 

@@ -318,6 +318,7 @@ git rev-parse 'upstream-v2026.10.8^{commit}'   # dc2523e5a5c7a309517fd7fa834add9
 ### 2.5 備份（使用者已選 (b) 輕量線上快照）
 
 - [x] **選 (b)：輕量線上快照** → `/home/kuniaki/backup-openclaw-20261028`（**294M**，496 個檔案）
+  - ⚠️ **此快照已於 2026-10-30 依使用者指示刪除**（10.9 升級驗收完成、用途結束後清理）
   - [x] 用容器內 `node:sqlite` 的 `backup()`（module-level `backup(db, path)`）取 **7 個 live SQLite** 一致快照
         （WAL 安全；agent 249,724,928 B + state 16,068,608 B + quarantine + codex-home ×4）
   - [x] **7/7 快照 `PRAGMA quick_check` = ok**
@@ -517,6 +518,7 @@ kubectl -n openclaw rollout status deploy/openclaw-gateway
 - [x] 備份 lifecycle：**已於使用者明確指示後清理 10.7 快照**（2026-10-28 07:37 CST）
   - 10.7 層 `/home/kuniaki/backup-openclaw-20261026`（267M）→ ✅ **已刪除**
   - 10.8 層 `/home/kuniaki/backup-openclaw-20261028`（**294M**，本次新建）→ **保留**，10.8 升級前回滾用
+    → ⚠️ **已於 2026-10-30 刪除**（10.9 上線並驗收通過後）
   - 磁碟 `/` 現況 586G / 1.8T（34%）
 - [x] 確認無 `*.memory-reindex-*` orphaned shadow DB 殘留（上游 #185902 提醒）
       → 備份排除規則本來就排除 reindex lock / shadow DB，且升級期間未跑 memory index
@@ -551,7 +553,7 @@ kubectl -n openclaw rollout status deploy/openclaw-gateway
 | #   | Agent 的說法                                                                       | 主機端複驗                                                                                                                                                                                                                                                                                                                                     | 判定                    |
 | --- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
 | 1   | Pod image digest、rollout、舊 pod 殘留                                             | `imageID` = `sha256:155bff25...` **與 build manifest digest 完全一致**；11 個 RS 中僅 `7d44bbf895` 為 `1/1`，其餘 10 個皆 `0`；`RESTARTS 0`                                                                                                                                                                                                    | ✅ 可接受               |
-| 2   | 容器內「No successful backup is recorded」                                         | 主機端 `/home/kuniaki/backup-openclaw-20261028`（**294M**）存在 → 容器內看不到 host home，**非檔案遺失**                                                                                                                                                                                                                                       | ✅ 可接受               |
+| 2   | 容器內「No successful backup is recorded」                                         | 主機端 `/home/kuniaki/backup-openclaw-20261028`（**294M**）存在 → 容器內看不到 host home，**非檔案遺失**（該快照已於 2026-10-30 刪除）                                                                                                                                                                                                         | ✅ 可接受               |
 | 3   | doctor cron 面板 100% 失敗：`file lock timeout for openclaw.sqlite.cron-authority` | **歸因需修正**：lock 檔內容 `pid: 7` = **活著的 gateway 主行程**（非 agent 所稱的「殘留、PID 90 已退出」）。doctor 為獨立行程，Gateway 自 pod 啟動即持有該 lock → 取得逾時。**但 10.7→10.8 `src/cron/store/`、`src/commands/doctor/cron/`、`src/state/` 讀取路徑 diff 全為空**，該 doctor 檢查自 2026-07-03（#99211）即存在 → **非 10.8 迴歸** | 🟢 需觀察（非升級造成） |
 | 4   | 記憶體絕對值比基線高 3–4%                                                          | 主機端複測 `memory.current` **2,592,550,912 → 2,592,473,088 → 2,592,817,152 B ≈ 2.41 GiB**（比 agent 報告時的 2.78 GiB **更低**）→ 趨勢持續下降。`memory.max=max`，host 30G / used 15G / available 15G                                                                                                                                         | 🟢 可接受               |
 | 5   | 3 筆 dead-letter 為 123–125 天前                                                   | 唯讀查 `channel_ingress_events`：`failed` **3 筆**（`pod_restart_crash` 125.1d、`pod_restart_crash_2` 125.0d、`Stuck event cleared due to bot migration` 122.7d），`completed` **72 筆**                                                                                                                                                       | ✅ 可接受               |
