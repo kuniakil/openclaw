@@ -552,7 +552,18 @@ chunking 參數未變 → chunk hash 不變 → cache 全命中，未觸發任�
   → 純 2 字詞查詢（如 `胃鏡`、`清腸 瀉藥`）排序仍由向量主導，正確檔案落在 top-9 之後
 - **實務 workaround**：中文查詢盡量含 **≥ 3 字詞組**（`大腸鏡 報告` ✅；`胃鏡 檢查` ❌）或整詞不切開（`胃鏡檢查`）
 
-### 4.8 回滾
+### 4.8 上游回報（2026-10-30）
+
+- [x] #170997（CJK bigram tokenizer 需求）→ 附實測：unicode61 CJK 展開必然落空、trigram 對 ≥3 字詞的 BM25 效果、
+      2 字詞 substring 通道只確認召回不給分、**tokenizer 變更只需重建 FTS、0 次 embedding 呼叫**
+      https://github.com/openclaw/openclaw/issues/170997#issuecomment-6515579900
+- [x] #140736（session transcript FTS 固定 unicode61）→ 附實測：`session_transcript_fts` 無 `tokenize` 子句（預設 unicode61）、
+      1 字詞 0–2 列、兩詞 AND 0 列
+      https://github.com/openclaw/openclaw/issues/140736#issuecomment-6515580189
+- [x] **個資檢查**：兩則回報僅含聚合數字（chunk / cache / 列數）、量測方法與合成術語，
+      未帶入檔名、醫療內容、主機／路徑、帳號、對話紀錄
+
+### 4.9 回滾
 
 ```bash
 cp /home/kuniaki/openclaw/.openclaw/openclaw.json.bak-20261030-trigram \
