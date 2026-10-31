@@ -11,6 +11,7 @@ import {
   dropMemoryChunkFtsTriggers,
   dropMemoryPathFtsTriggers,
   ensureMemoryChunkFtsSchema,
+  ensureMemoryCjkBigramFtsSchema,
   ensureMemoryPathFtsSchema,
   ensureMemoryPathFtsTriggers,
   MEMORY_INDEX_CHUNKS_TABLE,
@@ -46,17 +47,22 @@ export {
 } from "./memory-schema-recall.js";
 
 export {
+  deleteMemoryCjkBigramRows,
   dropMemoryChunkFtsTriggers,
   dropMemoryPathFtsTriggers,
   ensureMemoryChunkFtsTriggers,
+  ensureMemoryCjkBigramFtsSchema,
   ensureMemoryPathFtsTriggers,
+  upsertMemoryCjkBigramRow,
   MEMORY_INDEX_CHUNKS_TABLE,
+  MEMORY_INDEX_CJK_FTS_TABLE,
   MEMORY_INDEX_FTS_TABLE,
   MEMORY_INDEX_PATHS_FTS_TABLE,
   MEMORY_INDEX_SOURCES_TABLE,
   MEMORY_PATH_FTS_TRIGGER_DEFINITIONS,
   MEMORY_CHUNK_FTS_TRIGGER_DEFINITIONS,
   rebuildMemoryChunkFts,
+  rebuildMemoryCjkBigramFts,
 } from "./memory-schema-fts.js";
 export {
   ensureMemoryChunkProvenance,
@@ -368,6 +374,8 @@ export function ensureMemoryIndexSchema(params: {
   ftsTable?: string;
   ftsEnabled: boolean;
   ftsTokenizer?: "unicode61" | "trigram";
+  /** Build the companion Han-bigram index next to the body FTS index. */
+  cjkBigramFts?: boolean;
 }): { ftsAvailable: boolean; ftsError?: string } {
   const embeddingCacheTable = params.embeddingCacheTable ?? MEMORY_EMBEDDING_CACHE_TABLE;
   const ftsTable = params.ftsTable ?? MEMORY_INDEX_FTS_TABLE;
@@ -379,6 +387,10 @@ export function ensureMemoryIndexSchema(params: {
       ftsTable,
       params.ftsEnabled,
       tokenizer,
+      // The companion index is optional derived state, so its switch is part
+      // of the admission identity: toggling it must not reuse a schema that
+      // was admitted without it.
+      Boolean(params.cjkBigramFts),
     ])}`,
     schemaDependent: true,
     read: readMemoryIndexSchemaAdmission,
@@ -394,6 +406,12 @@ export function ensureMemoryIndexSchema(params: {
           if (ftsTable === MEMORY_INDEX_FTS_TABLE) {
             backfillMemoryPathFtsRows(params.db);
           }
+          // The companion index is derived from the canonical chunks, so the
+          // admitted fast path still has to keep it present and aligned.
+          ensureMemoryCjkBigramFtsSchema({
+            db: params.db,
+            enabled: params.cjkBigramFts === true,
+          });
         };
         if (params.db.isTransaction) {
           reconcile();
@@ -499,6 +517,10 @@ export function ensureMemoryIndexSchema(params: {
       if (ftsTable === MEMORY_INDEX_FTS_TABLE) {
         ensureMemoryPathFtsSchema({ db: params.db, tokenizeClause });
       }
+      // The companion Han-bigram index answers the two-character queries the
+      // trigram tokenizer cannot match. It is derived state, so it never
+      // blocks the body index from becoming available.
+      ensureMemoryCjkBigramFtsSchema({ db: params.db, enabled: params.cjkBigramFts === true });
       ftsAvailable = true;
     } catch (err) {
       if (ftsTable === MEMORY_INDEX_FTS_TABLE) {
