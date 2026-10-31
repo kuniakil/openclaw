@@ -603,6 +603,7 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {
               cacheEnabled: this.cache.enabled,
               ftsEnabled: shadow.fts.enabled,
               ftsTokenizer: this.settings.store.fts.tokenizer,
+              cjkBigramFts: this.settings.store.fts.cjk === "bigram",
             });
 
             await this.executeSourceSync({
