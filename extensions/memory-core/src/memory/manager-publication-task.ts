@@ -56,7 +56,7 @@ export type MemoryPublicationOperations = {
   "schema.admit": {
     input: Pick<
       Parameters<typeof ensureMemoryIndexSchema>[0],
-      "cacheEnabled" | "ftsEnabled" | "ftsTokenizer"
+      "cacheEnabled" | "ftsEnabled" | "ftsTokenizer" | "cjkBigramFts"
     >;
     output: MemoryPublicationResult<
       ReturnType<typeof ensureMemoryIndexSchema> & { admission?: MemoryDatabaseAdmission }
