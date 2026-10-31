@@ -1,6 +1,9 @@
 import type { DatabaseSync } from "node:sqlite";
 import { hashText, type MemorySource } from "openclaw/plugin-sdk/memory-core-host-engine-indexing";
-import { MEMORY_INDEX_VECTOR_TABLE } from "openclaw/plugin-sdk/memory-core-host-engine-schema";
+import {
+  MEMORY_INDEX_CJK_FTS_TABLE,
+  MEMORY_INDEX_VECTOR_TABLE,
+} from "openclaw/plugin-sdk/memory-core-host-engine-schema";
 import {
   executeSqliteQuerySync,
   executeSqliteQueryTakeFirstSync,
@@ -174,6 +177,16 @@ export class MemorySourceIndexKernel {
           markMemoryVectorRebuildRequired(this.database);
         }
       }
+    }
+    // The companion Han-bigram rows key on the canonical chunk rowid, so they
+    // have to go before the canonical rows disappear.
+    if (memoryTableExists(this.database, MEMORY_INDEX_CJK_FTS_TABLE)) {
+      this.database
+        .prepare(
+          `DELETE FROM ${MEMORY_INDEX_CJK_FTS_TABLE} WHERE rowid IN (` +
+            "SELECT chunk_rowid FROM memory_index_chunks WHERE path = ? AND source = ?)",
+        )
+        .run(pathname, source);
     }
     executeSqliteQuerySync(
       this.database,
