@@ -3,6 +3,7 @@ import {
   createSubsystemLogger,
   resolveUserPath,
 } from "openclaw/plugin-sdk/memory-core-host-engine-foundation";
+import { MEMORY_INDEX_CJK_FTS_TABLE } from "openclaw/plugin-sdk/memory-core-host-engine-schema";
 import { extractKeywords } from "openclaw/plugin-sdk/memory-core-host-engine-sessions";
 import {
   MEMORY_INDEX_FTS_TABLE as FTS_TABLE,
@@ -275,6 +276,8 @@ export abstract class MemoryKeywordRetrieval extends MemoryProviderLifecycle {
       includeRecallMetadata: options?.fuseRecallMetadata,
       body: {
         ftsTable: FTS_TABLE,
+        cjkBigramTable:
+          this.settings.store.fts.cjk === "bigram" ? MEMORY_INDEX_CJK_FTS_TABLE : undefined,
         query,
         ftsTokenizer: this.settings.store.fts.tokenizer,
         limit,

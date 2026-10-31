@@ -1,3 +1,7 @@
+import {
+  buildHanBigramMatchQuery,
+  isHanTerm,
+} from "openclaw/plugin-sdk/memory-core-host-engine-schema";
 import { normalizeStringEntries, uniqueStrings } from "openclaw/plugin-sdk/string-coerce-runtime";
 
 type FtsCanonicalTokenizer = "unicode61" | "trigram";
@@ -133,30 +137,47 @@ export function planKeywordSearch(params: {
   ftsTokenizer?: "unicode61" | "trigram";
   includeLeadingMarks?: boolean;
   canonicalVariants?: boolean;
-}): { matchQuery: string | null; substringTerms: string[] } {
+  /** Route short Han terms to the companion bigram index. */
+  cjkBigram?: boolean;
+}): { matchQuery: string | null; substringTerms: string[]; cjkBigramQuery: string | null } {
   const canonicalTokenizer = params.canonicalVariants
     ? (params.ftsTokenizer ?? "unicode61")
     : undefined;
   if (params.ftsTokenizer !== "trigram") {
     const matchQuery = buildFtsQuery(params.query, canonicalTokenizer);
-    return { matchQuery, substringTerms: [] };
+    return { matchQuery, substringTerms: [], cjkBigramQuery: null };
   }
   const tokens = tokenizeFtsQuery(params.query, params.includeLeadingMarks);
   const matchTerms: string[] = [];
-  const substringTerms: string[] = [];
+  const shortTerms: string[] = [];
   for (const token of tokens) {
     const forms = canonicalTermForms(token, canonicalTokenizer);
     // MATCH cannot find fewer than three code points. A decomposed spelling
     // must not hide a short composed form from the normalized substring owner.
     if (forms.some((form) => Array.from(form).length < 3)) {
-      substringTerms.push(token);
+      shortTerms.push(token);
     } else {
       matchTerms.push(token);
     }
   }
+  const matchQuery = buildMatchQueryFromTerms(matchTerms, canonicalTokenizer);
+  if (!params.cjkBigram || matchQuery !== null) {
+    // A query the main index can already rank keeps the current plan: the
+    // short terms stay substring filters on the ranked leg.
+    return { matchQuery, substringTerms: shortTerms, cjkBigramQuery: null };
+  }
+  // The main index cannot rank this query. Two-character Han terms move to
+  // the companion bigram index, which stores them as indexable tokens.
+  const cjkTerms = shortTerms.filter((term) => isHanTerm(term) && Array.from(term).length >= 2);
+  const cjkBigramQuery = buildHanBigramMatchQuery(cjkTerms);
+  if (!cjkBigramQuery) {
+    return { matchQuery, substringTerms: shortTerms, cjkBigramQuery: null };
+  }
+  const cjkTermSet = new Set(cjkTerms);
   return {
-    matchQuery: buildMatchQueryFromTerms(matchTerms, canonicalTokenizer),
-    substringTerms,
+    matchQuery,
+    substringTerms: shortTerms.filter((term) => !cjkTermSet.has(term)),
+    cjkBigramQuery,
   };
 }
 

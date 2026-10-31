@@ -6,6 +6,10 @@ import {
   type MemorySource,
 } from "openclaw/plugin-sdk/memory-core-host-engine-indexing";
 import {
+  encodeHanBigrams,
+  MEMORY_INDEX_CJK_FTS_TABLE,
+} from "openclaw/plugin-sdk/memory-core-host-engine-schema";
+import {
   compileSqliteQueryBindings,
   getNodeSqliteKysely,
 } from "openclaw/plugin-sdk/sqlite-worker-runtime";
@@ -117,6 +121,15 @@ export function createMemoryChunkWriter(
   let chunkStatement: StatementSync | undefined;
   let recallStatement: StatementSync | undefined;
   let provenanceStatement: StatementSync | undefined;
+  // The companion Han-bigram index is optional derived state. Its presence is
+  // the switch: the schema admission creates or drops it before any write.
+  const cjkFtsEnabled =
+    database
+      .prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?")
+      .get(MEMORY_INDEX_CJK_FTS_TABLE) !== undefined;
+  let chunkRowidStatement: StatementSync | undefined;
+  let cjkDeleteStatement: StatementSync | undefined;
+  let cjkInsertStatement: StatementSync | undefined;
 
   // One publication owns these statements, including large embeddings. Lazy
   // preparation keeps empty writes inert and later tables untouched on failure.
@@ -131,6 +144,31 @@ export function createMemoryChunkWriter(
     };
     (provenanceStatement ??= database.prepare(provenanceWrite.compiled.sql)).run(
       ...provenanceWrite.bind({ id, provenance }),
+    );
+    if (!cjkFtsEnabled) {
+      return;
+    }
+    const chunkRowid = (chunkRowidStatement ??= database.prepare(
+      "SELECT chunk_rowid FROM memory_index_chunks WHERE id = ?",
+    )).get(id) as { chunk_rowid?: number } | undefined;
+    if (typeof chunkRowid?.chunk_rowid !== "number") {
+      return;
+    }
+    (cjkDeleteStatement ??= database.prepare(
+      `DELETE FROM ${MEMORY_INDEX_CJK_FTS_TABLE} WHERE rowid = ?`,
+    )).run(chunkRowid.chunk_rowid);
+    (cjkInsertStatement ??= database.prepare(
+      `INSERT INTO ${MEMORY_INDEX_CJK_FTS_TABLE} (rowid, text, id, path, source, model, start_line, end_line)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    )).run(
+      chunkRowid.chunk_rowid,
+      encodeHanBigrams(chunk.text),
+      id,
+      context.path,
+      context.source,
+      context.model,
+      chunk.startLine,
+      chunk.endLine,
     );
   };
 }

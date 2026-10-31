@@ -276,6 +276,8 @@ function planPathKeywordSearch(params: {
 export async function searchKeyword(params: {
   db: DatabaseSync;
   ftsTable: string;
+  /** Companion Han-bigram index table, when the feature is enabled. */
+  cjkBigramTable?: string;
   query: string;
   ftsTokenizer?: "unicode61" | "trigram";
   limit: number;
@@ -291,8 +293,74 @@ export async function searchKeyword(params: {
     query: params.query,
     ftsTokenizer: params.ftsTokenizer,
     canonicalVariants: true,
+    cjkBigram: true,
   });
-  if (!plan.matchQuery && plan.substringTerms.length === 0) {
+  const cjkTable = params.cjkBigramTable;
+  const planWithoutCjkBigram = () =>
+    planKeywordSearch({
+      query: params.query,
+      ftsTokenizer: params.ftsTokenizer,
+      canonicalVariants: true,
+    });
+  // Without the companion table the short Han terms keep their substring plan
+  // so the query still recalls what it recalled before.
+  let effectivePlan = !cjkTable && plan.cjkBigramQuery ? planWithoutCjkBigram() : plan;
+  if (!effectivePlan.matchQuery && effectivePlan.cjkBigramQuery && cjkTable) {
+    // The companion bigram index is the only leg that can rank a
+    // two-character Han term, so it owns this query outright.
+    const terms = effectivePlan.substringTerms;
+    const filter = buildSubstringFilter(terms, "c.text");
+    if (terms.length > 0) {
+      registerSubstringSqlFunction(params.db, terms);
+    }
+    try {
+      const rows = params.db
+        .prepare(
+          `WITH hits AS (\n` +
+            `  SELECT rowid AS chunk_rowid, rank FROM ${cjkTable}\n` +
+            `   WHERE ${cjkTable} MATCH ? AND ${cjkTable}.rank MATCH 'bm25()'\n` +
+            `)\n` +
+            `SELECT c.id, c.path, c.source, c.start_line, c.end_line, c.text,\n` +
+            `       hits.rank AS rank\n` +
+            `  FROM hits JOIN memory_index_chunks c ON c.chunk_rowid = hits.chunk_rowid\n` +
+            ` WHERE 1=1${filter}${params.sourceFilter.sql}\n` +
+            ` ORDER BY hits.rank ASC\n` +
+            ` LIMIT ?`,
+        )
+        .all(
+          effectivePlan.cjkBigramQuery,
+          ...terms,
+          ...params.sourceFilter.params,
+          params.limit,
+        ) as Array<MemorySearchRow & { rank: number }>;
+      return rows.map((row) => {
+        const textScore = bm25RankToScore(row.rank);
+        const score = params.boostFallbackRanking
+          ? scoreFallbackKeywordResult({
+              queryMatchers: uniqueStrings(
+                normalizeSearchTokens(params.rankingQuery ?? params.query),
+              ).map((token) => ({
+                word: literalSearchMatcher(token, true),
+                substring: literalSearchMatcher(token),
+              })),
+              path: row.path,
+              text: row.text,
+              ftsScore: textScore,
+            })
+          : textScore;
+        return Object.assign(projectMemorySearchRow(row, params.snippetMaxChars, score), {
+          textScore,
+          hasBodyMatch: true as const,
+        });
+      });
+    } catch (error) {
+      // A missing or unreadable companion index must not lose recall: the
+      // substring plan still finds the same documents, just unranked.
+      console.warn(`memory search: CJK bigram index query failed: ${String(error)}`);
+      effectivePlan = planWithoutCjkBigram();
+    }
+  }
+  if (!effectivePlan.matchQuery && !effectivePlan.substringTerms.length) {
     return [];
   }
 
@@ -330,7 +398,7 @@ export async function searchKeyword(params: {
   };
 
   const { rows, usedMatch } = loadKeywordRowsWithFallback(
-    plan,
+    effectivePlan,
     loadRows,
     () => tokenizeFtsQuery(params.query),
     "memory search: FTS5 MATCH failed, falling back to substring search",
