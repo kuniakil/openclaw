@@ -1,5 +1,6 @@
 // Memory Host SDK module owns derived FTS schema and rebuild behavior.
 import type { DatabaseSync } from "node:sqlite";
+import { encodeHanBigrams } from "./cjk-bigram.js";
 import {
   buildSqliteMemoryBodyFtsSchema,
   buildSqliteMemoryPathFtsSchema,
@@ -9,6 +10,10 @@ export const MEMORY_INDEX_SOURCES_TABLE = "memory_index_sources";
 export const MEMORY_INDEX_CHUNKS_TABLE = "memory_index_chunks";
 export const MEMORY_INDEX_FTS_TABLE = "memory_index_chunks_fts";
 export const MEMORY_INDEX_PATHS_FTS_TABLE = "memory_index_paths_fts";
+// Companion index that stores a Han-bigram encoded copy of the chunk text.
+// SQLite FTS5 has no bigram tokenizer, so the encoding happens before the
+// text reaches `unicode61`, which keeps two-character queries indexable.
+export const MEMORY_INDEX_CJK_FTS_TABLE = "memory_index_chunks_cjk_fts";
 
 type FtsTableSchemaStatus = "missing" | "matching" | "mismatched" | "not-fts";
 
@@ -314,6 +319,152 @@ export function ensureMemoryPathFtsSchema(params: {
   } catch (err) {
     params.db.exec("ROLLBACK TO ensure_memory_index_paths_fts");
     params.db.exec("RELEASE ensure_memory_index_paths_fts");
+    throw err;
+  }
+}
+
+// --- CJK bigram companion index -------------------------------------------
+//
+// The trigram tokenizer cannot match a query shorter than three characters, so
+// two-character Han terms never reach a BM25-ranked token. This companion
+// index keeps the `unicode61` tokenizer but stores the Han runs of the chunk
+// text as overlapping character bigrams, which makes those terms indexable
+// and rankable without a native tokenizer.
+
+function buildMemoryCjkFtsSchemaSql(): string {
+  // The canonical body schema builder owns this DDL, so the deployed-schema
+  // recovery list and the live table stay the same definition.
+  return buildSqliteMemoryBodyFtsSchema({
+    tableName: MEMORY_INDEX_CJK_FTS_TABLE,
+    tokenizeClause: ", tokenize='unicode61'",
+  });
+}
+
+type MemoryCjkChunkRow = {
+  chunk_rowid: number;
+  id: string;
+  path: string;
+  source: string;
+  model: string;
+  start_line: number;
+  end_line: number;
+  text: string;
+};
+
+function readMemoryCjkChunkRows(db: DatabaseSync): MemoryCjkChunkRow[] {
+  return db
+    .prepare(
+      `SELECT chunk_rowid, id, path, source, model, start_line, end_line, text
+         FROM ${MEMORY_INDEX_CHUNKS_TABLE}`,
+    )
+    .all() as MemoryCjkChunkRow[];
+}
+
+/** Replace every companion row with the current canonical chunk text. */
+export function rebuildMemoryCjkBigramFts(db: DatabaseSync): number {
+  const rows = readMemoryCjkChunkRows(db);
+  db.exec(`DELETE FROM ${MEMORY_INDEX_CJK_FTS_TABLE}`);
+  const insert = db.prepare(
+    `INSERT INTO ${MEMORY_INDEX_CJK_FTS_TABLE} (rowid, text, id, path, source, model, start_line, end_line)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  for (const row of rows) {
+    insert.run(
+      row.chunk_rowid,
+      encodeHanBigrams(row.text),
+      row.id,
+      row.path,
+      row.source,
+      row.model,
+      row.start_line,
+      row.end_line,
+    );
+  }
+  return rows.length;
+}
+
+/** Keep one companion row aligned with its canonical chunk row. */
+export function upsertMemoryCjkBigramRow(params: {
+  db: DatabaseSync;
+  chunkRowid: number;
+  id: string;
+  path: string;
+  source: string;
+  model: string;
+  startLine: number;
+  endLine: number;
+  text: string;
+}): void {
+  params.db
+    .prepare(`DELETE FROM ${MEMORY_INDEX_CJK_FTS_TABLE} WHERE rowid = ?`)
+    .run(params.chunkRowid);
+  params.db
+    .prepare(
+      `INSERT INTO ${MEMORY_INDEX_CJK_FTS_TABLE} (rowid, text, id, path, source, model, start_line, end_line)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      params.chunkRowid,
+      encodeHanBigrams(params.text),
+      params.id,
+      params.path,
+      params.source,
+      params.model,
+      params.startLine,
+      params.endLine,
+    );
+}
+
+/** Remove the companion rows that belong to a canonical chunk row. */
+export function deleteMemoryCjkBigramRows(params: { db: DatabaseSync; chunkRowid: number }): void {
+  params.db
+    .prepare(`DELETE FROM ${MEMORY_INDEX_CJK_FTS_TABLE} WHERE rowid = ?`)
+    .run(params.chunkRowid);
+}
+
+/**
+ * Create, refresh, or drop the companion index.
+ *
+ * The companion table is fully derived from the canonical chunk table, so it
+ * is rebuilt whenever the two disagree and dropped when the feature is off.
+ */
+export function ensureMemoryCjkBigramFtsSchema(params: {
+  db: DatabaseSync;
+  enabled: boolean;
+}): void {
+  const { db } = params;
+  if (!params.enabled) {
+    db.exec(`DROP TABLE IF EXISTS ${MEMORY_INDEX_CJK_FTS_TABLE}`);
+    return;
+  }
+  const tableExists =
+    db
+      .prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?")
+      .get(MEMORY_INDEX_CJK_FTS_TABLE) !== undefined;
+  const canonicalCount = (
+    db.prepare(`SELECT count(*) AS count FROM ${MEMORY_INDEX_CHUNKS_TABLE}`).get() as {
+      count: number;
+    }
+  ).count;
+  const derivedCount = tableExists
+    ? (
+        db.prepare(`SELECT count(*) AS count FROM ${MEMORY_INDEX_CJK_FTS_TABLE}`).get() as {
+          count: number;
+        }
+      ).count
+    : -1;
+  if (tableExists && derivedCount === canonicalCount) {
+    return;
+  }
+  db.exec("SAVEPOINT ensure_memory_index_cjk_fts");
+  try {
+    db.exec(`DROP TABLE IF EXISTS ${MEMORY_INDEX_CJK_FTS_TABLE}`);
+    db.exec(buildMemoryCjkFtsSchemaSql());
+    rebuildMemoryCjkBigramFts(db);
+    db.exec("RELEASE ensure_memory_index_cjk_fts");
+  } catch (err) {
+    db.exec("ROLLBACK TO ensure_memory_index_cjk_fts");
+    db.exec("RELEASE ensure_memory_index_cjk_fts");
     throw err;
   }
 }

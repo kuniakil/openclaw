@@ -6,6 +6,11 @@ import {
   type MemorySource,
 } from "openclaw/plugin-sdk/memory-core-host-engine-indexing";
 import {
+  encodeHanBigrams,
+  MEMORY_INDEX_CHUNKS_TABLE,
+  MEMORY_INDEX_CJK_FTS_TABLE,
+} from "openclaw/plugin-sdk/memory-core-host-engine-schema";
+import {
   executeSqliteQuerySync,
   getNodeSqliteKysely,
 } from "openclaw/plugin-sdk/sqlite-worker-runtime";
@@ -145,4 +150,63 @@ export function writeMemoryChunks(
           ),
       ),
   );
+  syncMemoryCjkBigramRows(database, rows);
+}
+
+/**
+ * Keep the optional Han-bigram companion index aligned with the canonical
+ * chunk rows this publication wrote.
+ *
+ * The companion table is derived state keyed by the canonical chunk rowid, so
+ * every canonical row replaces its own companion row. The table's presence is
+ * the switch: the schema admission creates or drops it before any write.
+ */
+function syncMemoryCjkBigramRows(database: DatabaseSync, rows: readonly MemoryChunkWrite[]): void {
+  const cjkFtsEnabled =
+    database
+      .prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?")
+      .get(MEMORY_INDEX_CJK_FTS_TABLE) !== undefined;
+  if (!cjkFtsEnabled) {
+    return;
+  }
+  // The companion row mirrors the canonical row, so the canonical values are
+  // the ones to read back rather than the caller's copy of them.
+  const chunkStatement = database.prepare(
+    `SELECT chunk_rowid, text, path, source, model, start_line, end_line
+       FROM ${MEMORY_INDEX_CHUNKS_TABLE} WHERE id = ?`,
+  );
+  const deleteStatement = database.prepare(
+    `DELETE FROM ${MEMORY_INDEX_CJK_FTS_TABLE} WHERE rowid = ?`,
+  );
+  const insertStatement = database.prepare(
+    `INSERT INTO ${MEMORY_INDEX_CJK_FTS_TABLE} (rowid, text, id, path, source, model, start_line, end_line)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  for (const row of rows) {
+    const chunk = chunkStatement.get(row.id) as
+      | {
+          chunk_rowid?: number;
+          text?: string;
+          path?: string;
+          source?: string;
+          model?: string;
+          start_line?: number;
+          end_line?: number;
+        }
+      | undefined;
+    if (typeof chunk?.chunk_rowid !== "number") {
+      continue;
+    }
+    deleteStatement.run(chunk.chunk_rowid);
+    insertStatement.run(
+      chunk.chunk_rowid,
+      encodeHanBigrams(chunk.text ?? ""),
+      row.id,
+      chunk.path ?? "",
+      chunk.source ?? "",
+      chunk.model ?? "",
+      chunk.start_line ?? 0,
+      chunk.end_line ?? 0,
+    );
+  }
 }

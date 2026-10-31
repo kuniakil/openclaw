@@ -1,4 +1,6 @@
 // Canonical deployed lazy memory FTS definitions; no runtime provider dependency.
+/** Companion Han-bigram index kept next to the canonical body index. */
+const MEMORY_INDEX_CJK_FTS_TABLE = "memory_index_chunks_cjk_fts";
 type TextFragment = {
   kind: "body-fts" | "path-fts";
   tableName: string;
@@ -50,17 +52,26 @@ export function buildSqliteMemoryPathFtsSchema(params: { tokenizeClause: string 
 }
 
 export function getSqliteMemorySearchFtsSchemas(): string[] {
-  return (["body-fts", "path-fts"] as const).flatMap((kind) => {
-    const fragment: TextFragment = {
-      kind,
-      tableName: kind === "body-fts" ? "memory_index_chunks_fts" : "memory_index_paths_fts",
-      tokenizer: "unicode61",
-    };
-    return [
-      buildTextSchema(fragment, ""),
-      buildTextSchema(fragment, ", tokenize='unicode61'"),
-      buildTextSchema(fragment, ', tokenize="unicode61"'),
-      buildTextSchema(fragment, tokenizerClause("trigram")),
-    ];
-  });
+  return [
+    ...(["body-fts", "path-fts"] as const).flatMap((kind) => {
+      const fragment: TextFragment = {
+        kind,
+        tableName: kind === "body-fts" ? "memory_index_chunks_fts" : "memory_index_paths_fts",
+        tokenizer: "unicode61",
+      };
+      return [
+        buildTextSchema(fragment, ""),
+        buildTextSchema(fragment, ", tokenize='unicode61'"),
+        buildTextSchema(fragment, ', tokenize="unicode61"'),
+        buildTextSchema(fragment, tokenizerClause("trigram")),
+      ];
+    }),
+    // The companion Han-bigram index stores the chunk text as overlapping
+    // character bigrams so a two-character query stays BM25-rankable under
+    // the trigram tokenizer. Its tokenizer is always unicode61.
+    buildSqliteMemoryBodyFtsSchema({
+      tableName: MEMORY_INDEX_CJK_FTS_TABLE,
+      tokenizeClause: ", tokenize='unicode61'",
+    }),
+  ];
 }
