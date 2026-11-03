@@ -417,9 +417,9 @@ kubectl apply -k ~/kubernetes/openclaw/overlays/n100
     watch 觸發，故 re-chunk 會在**下一次真實對話**時由 Gateway 自動進行
     （`manager-sync-ops.ts` 會以 `chunkingVersion: MEMORY_CHUNKING_VERSION` 重寫 meta）。
     **不得**用 CLI 另起行程觸發，避免撞 Gemini 15 RPM 配額。
-- [ ] **真實訊息往返驗證**：
-  - 確認一次真實對話往返（Telegram）正常收發無報錯
-  - 同時觀察 `chunkingVersion` 是否收斂到 **6**、companion 表是否仍與 canonical 對齊
+- [x] **真實訊息往返驗證**：
+  - 確認一次真實對話往返（Telegram）正常收發無報錯 ✅
+  - 同時觀察 `chunkingVersion` 是否收斂到 **6**、companion 表是否仍與 canonical 對齊 ✅
 
 #### 3.3.1 Telegram 真實往返觸發的 re-chunk（2026-11-04 00:05）
 
@@ -450,13 +450,69 @@ kubectl apply -k ~/kubernetes/openclaw/overlays/n100
 - 負向對照（語料不存在的 2 字詞）= **0 rows** ✅
 - 結論：re-chunk 後伴生索引與 canonical 保持嚴格對齊，2 字中文召回與排序能力未受影響 ✅
 
-### 3.4 備份生命週期收尾（需使用者授權）
+**Telegram 端到端往返完成**（背景子代理監看同一回合，逐字證據）：
 
-- [ ] 彙整驗證結果與目前 N100 上的三份備份清單，主動詢問使用者是否清理舊備份：
-  - `/home/kuniaki/backup-openclaw-20261030`（279M，10.9 升級前）
-  - `/root/backup-openclaw-20261031-cjk-bigram`（510M，10.9 CJK Bigram 部署前）
-  - `/root/backup-openclaw-20261103`（本次 10.10 升級前，因跨 Schema `20→22` / `25→27`，建議至少保留至確認無須回滾 10.9 為止）
-- [ ] 更新本工作表所有勾選項並 commit push
+```
+2026-11-04T00:05:10.596+08:00 [telegram] Inbound message telegram:830338761 -> @N100_openclaw_mike_bot (direct, 23 chars)
+2026-11-04T00:06:03.138+08:00 [auto-reply/agent-turn-timing] agent turn milestone runId=b2d6af4e-83d4-441a-97ef-cdb0ac3deb35 sessionKey=agent:main:main milestone=tool_execution_started totalMs=48951
+2026-11-04T00:08:58.660+08:00 [telegram] outbound send ok accountId=default chatId=830338761 messageId=2741 operation=sendMessage deliveryKind=text chunkCount=4
+```
+
+- 往返耗時約 **3 分 49 秒**（00:05:10.596 → 00:08:58.660）✅
+- 期間 `RESOURCE_EXHAUSTED` = 0、`429` = 0、`FATAL` = 0、`RESTARTS` = 0 ✅
+- 本 build 不輸出獨立的 `turn_completed` 標記；「outbound send ok」即該回合最後一條 log，作為完成證據
+- 唯一一條 `ERROR` 級 log 是離線 `memory.cli` 被拒（10.10 新護欄，非故障，見 3.3）
+
+#### 3.3.2 使用者自檢（Gateway 內部 16 項，唯讀）
+
+使用者以 Gateway 內部自檢（唯讀，未執行 `memory index|search|reset`、`doctor --fix`、`agent`、任何 K8s 寫入）交叉驗證，結論與主機端驗證一致：
+
+| 項  | 檢查         | 實測                                                                         | 結果               |
+| --- | ------------ | ---------------------------------------------------------------------------- | ------------------ |
+| A   | 版本三項一致 | `2026.10.10` ×2 / node `v24.22.1`                                            | OK                 |
+| B   | 載入 plugin  | 20（startup log）                                                            | 偏差·合理          |
+| C   | doctor       | error 級 0 / complete 1 / 14 advisory panels                                 | OK                 |
+| D   | 自訂層       | locale / whisper 1.2.1 / tts 7.3.1 / ffmpeg / rsync / sshd / entrypoint 0755 | 全命中             |
+| E   | 自訂 patch   | pacing 命中 2 / gemini 併發鎖命中 1                                          | OK                 |
+| F   | DB schema    | agent 27 / state 22，`quick_check ok`                                        | 偏差·上游設計      |
+| G   | 記憶體索引   | chunks 1320 / fts 1320 / vec_rowids 1320 / cache 3390 / sources 193          | OK，未重建未重嵌入 |
+| H   | sessions     | `agent:main:main` + `agent:main:telegram:direct:830338761`                   | OK                 |
+| I   | 記憶體       | 2.72 → 2.33 GiB（cgroup −390 MB / gwRSS −357 MB / anon −487 MB）             | OK，低於升級前基線 |
+| J   | log          | fatal / panic / unhandled / 429 / degraded 全 0                              | OK                 |
+| K   | 上游徵狀     | `integrity gate` → `recovered after background inspection`                   | 自動復原           |
+
+- B 的基準改變：10.10 上游新增 `brave` / `minimax` / `perplexity` 三個 provider plugin（本 build 已 enabled → runtime 17 → 20）
+- C 的亮點：10-28 / 10-30 連續五次重現的 doctor cron `file lock timeout` 面板在 10.10 **已消失**，殘留 lock 檔也不再產生
+- F 的基準改變：`22 / 27` 是上游明列的不可逆遷移（工作表 `openclaw.schemaVersions` 已標 🔴），回滾需 DB 還原
+- G 證明：cache 3390 未清空、model / vectorDims 不變 → **零 embedding 額度消耗**；`ftsTokenizer = trigram` 與 `tokenize='trigram case_sensitive 0'` 完整保留
+- 另比對 10-28 / 10-30 兩次基線：**7 個檔案 MD5 全數一致**（無刪除、無竄改）
+
+自檢提出的三項後續觀察（見收工文章 6.2 / 6.3）：
+
+1. 離線 `openclaw memory status / search` 在 10.10 被拒（`This operation requires exclusive offline state ownership`）→ 屬保護性護欄，FTS 驗證改走 gateway 端或唯讀快照
+2. doctor 新增 minimax 兩個模型目錄警告 → 快照過期非下架，修法 `openclaw models list --refresh`
+3. groq（2026-09-30）與 tavily（2026-10-01）OpenClaw API 退場日需排入維護清單
+
+### 3.4 備份生命週期收尾（已於 2026-11-04 結案）
+
+- [x] 彙整驗證結果與備份清單，向使用者回報並取得清理授權 ✅
+  - 2026-11-04 回報三份備份（`/root/backup-openclaw-20261103` 2.3G、`/root/backup-openclaw-20261031-cjk-bigram` 510M、
+    `/home/kuniaki/backup-openclaw-20261030` 279M），使用者指示「備份只留最新的一份，以前升級做的備份刪除」
+- [x] 刪除舊升級備份（使用者明確授權）✅
+  - `rm -rf /root/backup-openclaw-20261031-cjk-bigram`（510M）
+  - `rm -rf /home/kuniaki/backup-openclaw-20261030`（279M）
+  - 保留 `/root/backup-openclaw-20261103`（2.3G）為唯一資料層回滾點；
+    Doctor 自存的 `openclaw-agent.sqlite.pre-startup-migration-*.bak`（185M，schema 25）與
+    `openclaw.sqlite.pre-startup-migration-*.bak`（16M，schema 20）屬本次升級，就地回滾點亦保留
+  - 磁碟：`/` 505G → 504G / 1.8T（29%）
+- [x] 在先前升級文章標註已刪除 ✅（`~/kubernetes/docs/`）
+  - `docs/openclaw-v2026-10-9-upgrade-20261030.md`：備份追蹤表列 `backup-openclaw-20261030` → **已刪除（2026-11-04）**，
+    並補「2026-11-04 清理後現況」與回滾成本說明
+  - `docs/openclaw-cjk-bigram-companion-fts-20261031.md`：`/root/backup-openclaw-20261031-cjk-bigram/` → **已刪除（2026-11-04）**
+- [x] 收工文章 ✅ `~/kubernetes/docs/openclaw-v2026-10-10-upgrade-postmortem-20261104.md`
+      （已發佈至 WordPress：https://wp.3pm.lol/openclaw-v2026-10-10-upgrade-postmortem-20261104/ ，
+      由 n8n webhook 匯入 Dify 知識庫）
+- [x] 更新本工作表所有勾選項並 commit push ✅
 
 ---
 
