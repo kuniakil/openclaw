@@ -421,6 +421,35 @@ kubectl apply -k ~/kubernetes/openclaw/overlays/n100
   - 確認一次真實對話往返（Telegram）正常收發無報錯
   - 同時觀察 `chunkingVersion` 是否收斂到 **6**、companion 表是否仍與 canonical 對齊
 
+#### 3.3.1 Telegram 真實往返觸發的 re-chunk（2026-11-04 00:05）
+
+使用者於 Telegram 下指令給 Gateway 做升級後檢查，該回合觸發了記憶體索引同步：
+
+- `00:05:10.596` **Inbound message** `telegram:830338761 -> @N100_openclaw_mike_bot` (direct, 23 chars)
+- `00:06:03.138` `agent turn milestone ... milestone=tool_execution_started totalMs=48951`
+
+**re-chunk 收斂結果（live 唯讀）**：
+
+| 項目                          | 升級前  | re-chunk 後                        |
+| ----------------------------- | ------- | ---------------------------------- |
+| `chunkingVersion`             | 5       | **6** ✅                           |
+| `memory_index_chunks`         | 1336    | **1320**（version 6 邊界略有差異） |
+| `memory_index_chunks_cjk_fts` | 1336    | **1320** ✅ 仍對齊                 |
+| 孤兒 companion 列             | 0       | **0** ✅                           |
+| `memory_vector_rebuild_v1`    | `clean` | `clean` ✅                         |
+| `RESOURCE_EXHAUSTED`          | 0       | **0** ✅（Gemini 4200ms 限速有效） |
+
+**re-chunk 後重新驗證伴生索引**（唯讀連線，未對 live DB 寫入）：
+
+| 索引                                         | 2 字詞「建議」 |
+| -------------------------------------------- | -------------- |
+| `memory_index_chunks_fts`（trigram）         | **0 rows**     |
+| `memory_index_chunks_cjk_fts`（伴生 bigram） | **129 rows**   |
+
+- BM25 rank 1 `bm25=-3.608007` → `MEMORY.md`：`- **完整循環**：診斷 → 建議 → 等明確同意 → 才執行`
+- 負向對照（語料不存在的 2 字詞）= **0 rows** ✅
+- 結論：re-chunk 後伴生索引與 canonical 保持嚴格對齊，2 字中文召回與排序能力未受影響 ✅
+
 ### 3.4 備份生命週期收尾（需使用者授權）
 
 - [ ] 彙整驗證結果與目前 N100 上的三份備份清單，主動詢問使用者是否清理舊備份：
