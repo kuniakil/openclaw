@@ -1,6 +1,9 @@
 name: Upgrade Verification
 
 on:
+  push:
+    branches:
+      - my-config-v2026.10.10
   workflow_dispatch:
 
 permissions:
