@@ -254,11 +254,43 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
   --ref my-config-v2026.10.10 -f tag=v2026.10.10 -f platforms=all
 ```
 
-- [ ] 分支已 push 至 `origin`（`kuniakil/openclaw`，絕不 push `upstream`）
-- [ ] 觸發 `docker-release.yml` 成功（若遇 `HTTP 422 Actions has been disabled`，依 Hard Rule 8 至 `https://github.com/kuniakil/openclaw/actions` 點擊橫幅重新啟用）
-- [ ] 立即驗證 Run 參數（`event == workflow_dispatch`、`headBranch == my-config-v2026.10.10`、`headSha == 我們的 HEAD`）
-- [ ] 派背景子代理執行 `gh run watch <run_id>`，等待 multi-arch (`amd64` + `arm64`) 建置完成
-- [ ] 驗證 GHCR image tags 存在：`2026.10.10`、`v2026.10.10`、`2026.10.10-slim`、`latest`、`main`
+- [x] 分支已 push 至 `origin`（`kuniakil/openclaw`，絕不 push `upstream`）
+- [x] 觸發 `docker-release.yml` 成功（若遇 `HTTP 422 Actions has been disabled`，依 Hard Rule 8 至 `https://github.com/kuniakil/openclaw/actions` 點擊橫幅重新啟用）
+- [x] 立即驗證 Run 參數（`event == workflow_dispatch`、`headBranch == my-config-v2026.10.10`、`headSha == 我們的 HEAD`）
+  - Run `41660840410`：`event=workflow_dispatch`、`headBranch=my-config-v2026.10.10`、`headSha=dafade25ba7`
+- [x] 派背景子代理執行 `gh run watch <run_id>`，等待 multi-arch (`amd64` + `arm64`) 建置完成
+  - Run `41660840410` → **success**（11.5 分，`amd64` + `arm64` 雙腿皆綠）
+- [x] 驗證 GHCR image tags 存在：`2026.10.10`、`v2026.10.10`、`2026.10.10-slim`、`latest`、`main`
+  - 全部 OK
+  - manifest 含 `linux/amd64` + `linux/arm64` ✅
+  - **最終 digest（重建後）**：`sha256:6065e1a215328d686d01cdc585f1bc1c09663428bb0851264c71a36793ed8cdf`
+    （重建前的 `sha256:9ec6f99a…` 已被覆寫；此 digest 即 Pod 的 imageID 基準）
+
+> **型別／行為驗證結果（Run `41662476088` → success）**
+>
+> - `pnpm tsgo:core`（`src/**` + `packages/**`）✅
+> - `pnpm tsgo:extensions:all`（extensions 專案 + 其 test 專案）✅
+> - `vitest --config test/vitest/vitest.extension-memory.config.ts` 的 CJK 伴生索引測試 ✅
+>   （`manager-search.cjk-bigram.test.ts` 全數通過：兩字 Han 查詢 BM25 排序 >
+>   0、trigram 不可 match 的兩字詞可召回、單字維持未排序、無伴生表時退回
+>   substring plan、伴生表隨 chunk writer 對齊、選項關閉時表被移除）
+> - 第一次驗證 run `41660798478` 失敗僅因 workflow 設定
+>   （`pnpm/action-setup` 不接受同時指定 `version:` 與 `packageManager`），非程式問題。
+>
+> **重建 image 的原因**：`Dockerfile` 用 `COPY . .`，而 `.dockerignore` 未排除 `.github/`，
+> 故暫時 workflow 檔會進入 image 內容。為維持「分支 = image 來源」一致，移除暫時
+> workflow 後重新 dispatch（Run `41663953929`，`headSha = b67469cb412`）覆寫 `2026.10.10` tags。
+
+> **補充：型別／行為驗證改由 GitHub Actions 承載**（Mac 主機保護）。
+> 由於 `docker-release.yml` 僅做 image build（`tsdown` 打包，不做完整 typecheck），
+> 另建暫時 workflow `.github/workflows/upgrade-verification.yml`（`on: push` 觸發分支）跑
+> `pnpm tsgo:core` + `pnpm tsgo:extensions:all` 與
+> `vitest --config test/vitest/vitest.extension-memory.config.ts` 的 CJK 伴生索引測試。
+> Run `41660798478`。驗證通過後會移除此暫時 workflow，回復「僅留 `docker-release.yml` 1 檔」。
+>
+> **最終狀態**：暫時 workflow 已於 commit `b67469cb412` 移除，`.github/workflows/` 僅留
+> `docker-release.yml`。重建 run `41663953929`（`headSha = b67469cb412`）**success**
+> （`prepare` / `build-and-push` amd64+arm64 / `merge` 四腿全綠）。
 
 ---
 
@@ -276,8 +308,20 @@ ssh n100-rescue "rsync -aH /data/services/openclaw/.openclaw/ /root/backup-openc
 ssh n100-rescue "du -sh /root/backup-openclaw-20261103"
 ```
 
-- [ ] Pre-flight 檢查通過（無殘留 CLI 行程、無 429）
-- [ ] `/root/backup-openclaw-20261103` 建立完成並確認 SQLite 檔案與 `openclaw.json` 完整
+- [x] Pre-flight 檢查通過（無殘留 CLI 行程、無 429）
+  - `ps` 無 `openclaw memory` / `openclaw agent` 行程；最近 3 分鐘 `[memory]` 事件 = 0；
+    最近 30 分鐘 `RESOURCE_EXHAUSTED` = 0
+- [x] `/root/backup-openclaw-20261103` 建立完成並確認 SQLite 檔案與 `openclaw.json` 完整
+  - `rsync -aH -A -X` 全量複製 `/data/services/openclaw/.openclaw/` → **2.3G**
+    （`agents` 501M、`workspace` 548M、`whisper-lib` 446M…；比 10/31 的 510M 大，因 workspace 成長）
+  - **WAL-aware**：對每個 live SQLite 以 `sqlite3 ".backup"` 產生一致快照，並移除快照旁的
+    `-wal`/`-shm`（快照本身已含 WAL 內容），再以 `chown/chmod --reference` 對齊原始權限
+  - 驗證：`state/openclaw.sqlite` integrity=`ok` user_version=**20**；
+    `agents/main/agent/openclaw-agent.sqlite` integrity=`ok` user_version=**25** ✅（升級前 schema）
+  - 升級前記憶體索引基準：`memory_index_chunks` = 1336、`memory_index_chunks_cjk_fts` = 1336（已對齊）；
+    `memory_index_meta_v1` = `chunkingVersion: 5`、`ftsTokenizer: trigram`、
+    `embeddingInputFormatVersion: 0`、`model: gemini-embedding-001`、`vectorDims: 3072`
+  - 線上設定確認：`memory.store.fts = { tokenizer: "trigram", cjk: "bigram" }`（伴生索引為啟用狀態）
 
 ### 3.2 Kustomize 部署至 N100 K3s
 
@@ -286,27 +330,96 @@ ssh n100-rescue "du -sh /root/backup-openclaw-20261103"
 kubectl apply -k ~/kubernetes/openclaw/overlays/n100
 ```
 
-- [ ] 更新 `~/kubernetes/openclaw/overlays/n100/kustomization.yaml` 的 `newTag` 為 `"2026.10.10"`
-- [ ] `kubectl apply -k ~/kubernetes/openclaw/overlays/n100`
-- [ ] 派背景子代理監看 `kubectl -n openclaw rollout status deploy/openclaw-gateway` 直至 `1/1 Running`、`RESTARTS 0`
-- [ ] 同步 `~/kubernetes` git commit & push（並同步 N100 `/home/kuniaki/kubernetes` checkout）
+- [x] 更新 `~/kubernetes/openclaw/overlays/n100/kustomization.yaml` 的 `newTag` 為 `"2026.10.10"`
+  - `kubectl kustomize` 渲染確認：`image: ghcr.io/kuniakil/openclaw:2026.10.10`
+  - `kubectl diff -k`（對線上）**僅一處變更**：image tag
+    `2026.10.9-cjk-bigram.1 → 2026.10.10`，其餘欄位零漂移
+  - 註：Mac 目前無法直連 `192.168.31.72:6443`，改用 `n100-cloudflare-kubeconfig.yaml`
+    （`https://k8s.3pm.lol`，同一叢集）執行 apply
+- [x] 部署前 pre-flight 再次確認（apply 前 1 分鐘內採樣）
+  - 無 `openclaw memory` / `openclaw agent` 行程；最近 3 分鐘 `[memory]` 事件 = 0；
+    最近 30 分鐘 `RESOURCE_EXHAUSTED` = 0；部署中 image 仍為 `2026.10.9-cjk-bigram.1`
+- [x] `kubectl apply -k ~/kubernetes/openclaw/overlays/n100`
+  - 輸出：`deployment.apps/openclaw-gateway configured`，其餘資源皆 `unchanged`
+- [x] 派背景子代理監看 `kubectl -n openclaw rollout status deploy/openclaw-gateway` 直至 `1/1 Running`、`RESTARTS 0`
+  - 背景子代理觀察到第一個 Pod `...-m85rg` CrashLoopBackOff（exit 78，agent DB schema 25 未遷移）
+  - 依上游升級路徑以 Doctor 完成遷移後，新 Pod `...-rlh4x` `1/1 Running`、`RESTARTS 0`、
+    `RESOURCE_EXHAUSTED` = 0、imageID = manifest digest ✅（詳見 3.3）
+- [x] 同步 `~/kubernetes` git commit & push（並同步 N100 `/home/kuniaki/kubernetes` checkout）
+  - `~/kubernetes` commit `a7deb13` `chore(openclaw): bump gateway image to 2026.10.10` → push `origin/main` ✅
+  - N100 `/home/kuniaki/kubernetes` 原為 `d082748`（`newTag: "2026.10.9"` 過期）；
+    該主機的 git 無 GitHub 憑證（`could not read Username for 'https://github.com'`），
+    故改以 `git bundle`（Mac 端 `git bundle create /tmp/my-k8s-main.bundle main`）
+    傳遞後於主機端 `git fetch <bundle> main` + `git merge --ff-only`，
+    已 fast-forward 至 `a7deb13`，`newTag: "2026.10.10"` ✅（未落地任何憑證）
 
 ### 3.3 啟動、Schema 遷移與功能驗證
 
-- [ ] **版本與健康度**：`openclaw --version` = `OpenClaw 2026.10.10`、`/health` = `200 OK`
-- [ ] **Schema 遷移驗證（`state 20 → 22`、`agent 25 → 27`）**：
-  - 檢查啟動 log 無 `MigrationRequired` / `quarantine` / `ERROR` / `FATAL`
-  - 唯讀驗證 `state.sqlite` `PRAGMA user_version` = **`22`**、`agent.sqlite` `PRAGMA user_version` = **`27`**、`PRAGMA quick_check` = **`ok`**
-- [ ] **自訂工具鏈存活**：
-  - `locale -a` 含 `en_US.utf8` / `zh_TW.utf8`
-  - `faster_whisper`、`edge_tts`、`ffmpeg`、`rsync`、`sshd`、`entrypoint-ssh.sh` (0755) 正常
-  - Gemini 4200ms 限速常數與併發鎖存在於 `/app/dist/` 產物中
-- [ ] **Companion CJK Bigram FTS 與 Memory 狀態驗證（遵守 `openclaw-embedding-ops`）**：
-  - 確認 `sqlite_master` 中 `memory_index_chunks_cjk_fts` 存在且列數與 `memory_index_chunks` 對齊
-  - 觀察 Gateway 背景 `chunkingVersion 5 → 6` 收斂情況（確認 `RESOURCE_EXHAUSTED` = 0）
-  - 待背景索引靜止後，驗證 2 字中文查詢（如 `配置`、`數據`）`textScore > 0` 且排序第 1
+> ⚠️ **實際遭遇：Gateway 不會自動遷移 agent DB，必須走 Doctor。**
+> 第一個 `2026.10.10` Pod（`...-m85rg`）啟動即失敗並 CrashLoopBackOff（5 次，exit code **78**）：
+>
+> ```
+> Agent main (/home/node/.openclaw/agents/main/agent/openclaw-agent.sqlite): OpenClaw agent database
+> ... uses schema version 25; stop active agents and run openclaw doctor --fix to migrate session identities
+> Sessions remain unavailable. Stop the Gateway, run "openclaw doctor --fix" to inspect and repair this agent
+> database, and restart.
+> [gateway] startup phase: cli.main.gateway-run-bootstrap 3575.1ms total=7778.9ms start=4203.7ms failed
+> ```
+>
+> 這是上游刻意的安全設計（`docs/install/updating.md` 與
+> `docs/reference/database-schemas/agent-schema-history.md` 明載：升級前必須停止 Gateway 與
+> 所有 writer，再以新版本執行 `openclaw doctor --fix`）。**本次實際執行步驟**：
+>
+> 1. `kubectl -n openclaw scale deploy/openclaw-gateway --replicas=0`（停 Gateway，確認舊 Pod 消失）
+> 2. 確認沒有其他行程持有 `openclaw-agent.sqlite`（掃 `/proc/*/fd` → 0 holder；
+>    主機上其他 `node dist/index.js` 行程屬其他 Pod，使用完全不同的 DB `/app/config/db/db.sqlite3`）
+> 3. 以同一 image／volumes／env／serviceAccount 建立一次性 Pod `openclaw-doctor-fix`，
+>    command 覆寫為 `node dist/index.js doctor --fix`（`restartPolicy: Never`）
+> 4. Doctor `Completed` exit=**0**，log：
+>    `Upgraded agent database schema in .../openclaw-agent.sqlite: v25 -> v27.`
+>    （Doctor 同時自存 pre-migration 備份 `*.pre-startup-migration-<uuid>.bak`）
+> 5. `kubectl -n openclaw scale deploy/openclaw-gateway --replicas=1` → 新 Pod `...-rlh4x` 1/1 Running、RESTARTS 0
+> 6. 驗證完畢後刪除一次性 doctor Pod（`openclaw-doctor-fix` 已 `Completed`，不持有狀態）
+
+- [x] **版本與健康度**：`openclaw --version` = `OpenClaw 2026.10.10` ✅
+  - `/health` → `{"ok":true,"status":"live"}` ✅（`wget` 不存在於 image，改用 `curl`）
+  - Pod：`openclaw-gateway-85c7787c5f-rlh4x`、`1/1 Running`、`RESTARTS 0`
+  - imageID = `ghcr.io/kuniakil/openclaw@sha256:6065e1a215328d686d01cdc585f1bc1c09663428bb0851264c71a36793ed8cdf`
+    （= GHCR manifest digest）✅
+- [x] **Schema 遷移驗證（`state 20 → 22`、`agent 25 → 27`）**：
+  - `state.sqlite` `PRAGMA user_version` = **`22`**、`PRAGMA quick_check` = **`ok`** ✅
+  - `openclaw-agent.sqlite` `PRAGMA user_version` = **`27`**、`PRAGMA quick_check` = **`ok`** ✅
+  - 啟動 log：`ERROR` / `FATAL` / `CRITICAL` = **0**、`RESOURCE_EXHAUSTED` = **0** ✅
+    （僅非致命警告：`MaxListenersExceededWarning`、4 則 `DEP_PLUGIN_SDK` deprecation、
+    Doctor 提示 `legacy browser relay auth` / `groq`+`tavily` 退役日 / `completion --write-state` 建議）
+- [x] **自訂工具鏈存活**：
+  - `locale -a` 含 `en_US.utf8` / `zh_TW.utf8` ✅
+  - `faster_whisper` **1.2.1**、**edge_tts 7.3.1** ✅（`python3 -c "import ..."` 驗證；
+    驗證腳本原本用 `command -v` 判 Python 模組屬誤判，已更正）
+  - `ffmpeg` OK、`rsync` OK ✅
+  - `/usr/sbin/sshd` = **OpenSSH_9.2** ✅（不在 PATH，故 `command -v sshd` 為誤判）
+  - `/usr/local/bin/whisper` 0755、`/app/docker/entrypoint-ssh.sh` **0755** ✅（`whisper --help` 可執行）
+  - `MIN_GEMINI_EMBEDDING_INTERVAL_MS` 存在於 `/app/dist/embedding-provider-*.mjs` ✅
+- [x] **Companion CJK Bigram FTS 與 Memory 狀態驗證（唯讀快照，不碰 live DB）**：
+  - `memory_index_chunks` = **1336**、`memory_index_chunks_cjk_fts` = **1336** ✅ 對齊
+  - 孤兒 companion 列（rowid 對不到 canonical chunk）= **0** ✅
+  - `memory_vector_rebuild_v1` = `clean` ✅
+  - **2 字中文召回對照（核心證據）**，以 `sqlite3 ".backup"` 一致快照查詢：
+    | 索引                                           | 2 字詞「建議」 | 3 字詞對照組 |
+    | ---------------------------------------------- | -------------- | ------------ |
+    | `memory_index_chunks_fts`（trigram）           | **0 rows**     | 4 rows       |
+    | `memory_index_chunks_cjk_fts`（伴生 bigram）   | **129 rows**   | —            |
+    | 負向對照（語料不存在的 2 字詞）= **0 rows** ✅ |
+  - **伴生索引 BM25 排序**：rank 1 `bm25=-3.627943`（`MEMORY.md`：`- **完整循環**：診斷 → 建議 → 等明確同意 → 才執行`）
+    → 2 字詞可召回且**可排序**，不再是未排序的 LIKE fallback ✅
+  - `chunkingVersion` 仍為 **5**（10.10 的 `MEMORY_CHUNKING_VERSION` = 6）：
+    記憶體索引 `sync.intervalMinutes = 0`（無週期同步），同步由 `onSessionStart` / `onSearch` /
+    watch 觸發，故 re-chunk 會在**下一次真實對話**時由 Gateway 自動進行
+    （`manager-sync-ops.ts` 會以 `chunkingVersion: MEMORY_CHUNKING_VERSION` 重寫 meta）。
+    **不得**用 CLI 另起行程觸發，避免撞 Gemini 15 RPM 配額。
 - [ ] **真實訊息往返驗證**：
-  - 確認一次真實對話往返（Telegram 或 Control UI）正常收發無報錯
+  - 確認一次真實對話往返（Telegram）正常收發無報錯
+  - 同時觀察 `chunkingVersion` 是否收斂到 **6**、companion 表是否仍與 canonical 對齊
 
 ### 3.4 備份生命週期收尾（需使用者授權）
 
