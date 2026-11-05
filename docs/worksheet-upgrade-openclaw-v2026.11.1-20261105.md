@@ -310,7 +310,7 @@ comm -12 <(git diff --name-only upstream-v2026.10.10..HEAD | grep -v '^\.github/
 - [x] 官方 Release Notes / `CHANGELOG/2026.11.1.md` / `docs/gateway/doctor/config-migrations.md` / `docs/install/updating.md` 審查完成
 - [x] `schemaVersions` 確認**未變更**（`state 22` / `agent 27`）→ 無不可逆遷移，備份非強制
 - [x] 衝突面分析 + **真實 cherry-pick 演練**完成（見 1.3 C）
-- [ ] **取得使用者 Go-Sign**
+- [x] **取得使用者 Go-Sign** → ✅ 已於 2026-11-05 取得
 
 ### 2.1 建立新分支 `my-config-v2026.11.1`
 
@@ -318,7 +318,7 @@ comm -12 <(git diff --name-only upstream-v2026.10.10..HEAD | grep -v '^\.github/
 git checkout -b my-config-v2026.11.1 'upstream-v2026.11.1^{commit}'
 ```
 
-- [ ] 確認 base commit = `4ffdd2047d1`、`package.json` version = `2026.11.1`
+- [x] 確認 base commit = `4ffdd2047d1`、`package.json` version = `2026.11.1` ✅
 
 ### 2.2 Purge 官方 Workflows 並覆蓋精簡版 `docker-release.yml`
 
@@ -329,7 +329,7 @@ git add .github/workflows
 git commit -m "chore: purge official CI workflows; use optimized matrix docker-release.yml"
 ```
 
-- [ ] 確認 `.github/workflows/` 僅留 `docker-release.yml` 1 檔（`workflow_dispatch` only，input 名稱為 `tag`、第二個 input 為 `platforms`）
+- [x] 確認 `.github/workflows/` 僅留 `docker-release.yml` 1 檔（`workflow_dispatch` only，input 名稱為 `tag`、第二個 input 為 `platforms`）✅
 
 > 註：上游 11.1 的 `docker-release.yml` **本身零變更**，但上游改了 8 個其他官方 workflow；
 > 我們整個 `.github/workflows/` 都會被 purge，因此最終只留我們那一版。
@@ -344,24 +344,25 @@ git cherry-pick dc04077ce26   # D: Companion CJK Bigram FTS 索引
 git cherry-pick 43600ab893b   # E: CJK 索引文件
 ```
 
-- [ ] Commit A 完成 → **預期 8 個 modify/delete 衝突**（上游 11.1 改過的官方 workflow 檔）：
-      `git rm` 該 8 檔 → `git cherry-pick --continue` → `.github/workflows/` 僅剩我們的 `docker-release.yml`
-- [ ] Commit B 完成（零衝突）
-- [ ] Commit C 完成（零衝突，`assets/whisper`、`docker/entrypoint-ssh.sh` 權限須為 `100755`）
-- [ ] Commit D 完成（零衝突，17 檔）
-- [ ] Commit E 完成（零衝突）
-- [ ] 確認 `git log --merges upstream-v2026.11.1..HEAD` 為 **0 merge commits**
+- [x] Commit A 完成 → **8 個 modify/delete 衝突**（上游 11.1 改過的官方 workflow 檔，與預期完全一致）：
+      `git rm` 該 8 檔 → `git cherry-pick --continue` → `.github/workflows/` 僅剩我們的 `docker-release.yml` ✅
+      → 新 commit `e566024a44f`
+- [x] Commit B 完成（零衝突）→ 新 commit `a826c628860`
+- [x] Commit C 完成（零衝突，`assets/whisper`、`docker/entrypoint-ssh.sh` 權限為 `100755`）→ 新 commit `9f980f0987a`
+- [x] Commit D 完成（零衝突，17 檔）→ 新 commit `19ca4bed5fa`
+- [x] Commit E 完成（零衝突）→ 新 commit `bf8d3aa5c9e`
+- [x] 確認 `git log --merges upstream-v2026.11.1..HEAD` 為 **0 merge commits** ✅
 
 ### 2.4 輕量本地驗證（Host Resource Protection — 不跑全庫 tsgo/vitest）
 
-- [ ] `git grep -q 'Custom: Install faster-whisper' HEAD -- Dockerfile` 命中
-- [ ] `git grep -n 'MIN_GEMINI_EMBEDDING_INTERVAL_MS' HEAD -- extensions/google/embedding-provider.ts` 命中
-- [ ] `git grep -n 'syncMemoryCjkBigramRows' HEAD -- extensions/memory-core/src/memory/manager-chunk-writer.ts` 命中
-- [ ] `git grep -n 'MEMORY_INDEX_CHUNKS_CJK_FTS_TABLE\|cjkBigram' HEAD -- packages/ extensions/ src/` 命中完整
-- [ ] `git diff upstream-v2026.11.1 HEAD -- Dockerfile` 為 **純新增 46 行**、無刪改
-- [ ] `git diff --stat upstream-v2026.11.1 HEAD -- .github/workflows/` 顯示只剩我們的 `docker-release.yml`
-- [ ] 檢查 `assets/whisper` 與 `docker/entrypoint-ssh.sh` 權限皆為 `100755`
-- [ ] `scripts/check-no-conflict-markers.mjs` 通過
+- [x] `git grep -q 'Custom: Install faster-whisper' HEAD -- Dockerfile` 命中 ✅
+- [x] `git grep -n 'MIN_GEMINI_EMBEDDING_INTERVAL_MS' HEAD -- extensions/google/embedding-provider.ts` 命中（`:219` 定義、`:298` 套用）✅
+- [x] `git grep -n 'syncMemoryCjkBigramRows' HEAD -- extensions/memory-core/src/memory/manager-chunk-writer.ts` 命中（`:153` 呼叫、`:164` 定義）✅
+- [x] `git grep -n 'MEMORY_INDEX_CHUNKS_CJK_FTS_TABLE\|cjkBigram' HEAD -- packages/ extensions/ src/` 命中完整（10 檔）✅
+- [x] `git diff upstream-v2026.11.1 HEAD -- Dockerfile` 為 **純新增 46 行**、刪除行數 = **0** ✅
+- [x] `git diff --stat upstream-v2026.11.1 HEAD -- .github/workflows/` = 117 files changed（+149 / −67,090），最終僅留我們的 `docker-release.yml` ✅
+- [x] 檢查 `assets/whisper` 與 `docker/entrypoint-ssh.sh` 權限皆為 `100755` ✅
+- [x] `scripts/check-no-conflict-markers.mjs` 通過（exit 0）✅
 
 > ⚠️ **本地不跑重型 typecheck／vitest**（Mac 主機保護，見執行前提）。型別與行為驗證交由 GitHub Actions 承載（見 2.5）。
 
@@ -374,19 +375,34 @@ gh workflow run docker-release.yml --repo kuniakil/openclaw \
   --ref my-config-v2026.11.1 -f tag=v2026.11.1 -f platforms=all
 ```
 
-- [ ] 分支已 push 至 `origin`（`kuniakil/openclaw`，**絕不 push `upstream`**，也不 push 任何 `v*` tag）
-- [ ] dispatch 成功（若遇 `HTTP 422 Actions has been disabled`，依 Hard Rule 8 至
-      `https://github.com/kuniakil/openclaw/actions` 點擊橫幅重新啟用；**不要**清 cache、不要改 repo settings）
-- [ ] 立即驗證 Run 參數：`event == workflow_dispatch`、`headBranch == my-config-v2026.11.1`、`headSha == 我們的 HEAD`
-- [ ] 派**背景子代理**執行 `gh run watch <run_id>`（build 10+ 分鐘，主迴圈不阻塞）
-- [ ] 驗證 GHCR image tags 存在：`2026.11.1`、`v2026.11.1`、`2026.11.1-slim`、`latest`、`main`；
-      manifest 含 `linux/amd64` + `linux/arm64`；記錄最終 digest
+- [x] 分支已 push 至 `origin`（`kuniakil/openclaw`，**絕不 push `upstream`**，也不 push 任何 `v*` tag）✅
+- [x] dispatch 成功（未遇 422）✅
+- [x] 立即驗證 Run 參數：`event == workflow_dispatch`、`headBranch == my-config-v2026.11.1`、`headSha == 我們的 HEAD` ✅
+      → Run `42053090925`（`headSha=f1477966dc2`）
+- [x] 派**背景子代理**執行 `gh run watch <run_id>`（build 10+ 分鐘，主迴圈不阻塞）✅
+- [x] 驗證 GHCR image tags 存在：`2026.11.1`、`v2026.11.1`、`2026.11.1-slim`、`latest`、`main` **全部 OK** ✅
 
-> **型別／行為驗證**：本次上游**沒有**動到我們自訂 commit 修改的任何非 workflow 檔（1.3 B 逐一驗證），
-> 預期編譯與行為與 10.10 相同。若 `docker-release.yml` 的 build 失敗（`tsdown` 打包階段），
-> 再依 10.10 的做法補一個臨時 `.github/workflows/upgrade-verification.yml`
-> 跑 `pnpm tsgo:core` + `pnpm tsgo:extensions:all` + `vitest --config test/vitest/vitest.extension-memory.config.ts`，
-> 驗證完隨即移除（回復「僅留 `docker-release.yml` 1 檔」）。
+> **型別／行為驗證（由 GitHub Actions 承載，Mac 主機保護）**
+>
+> 因 `Dockerfile` 用 `COPY . .` 而 `.dockerignore` 未排除 `.github/`，暫時 workflow 檔會進入 image 內容。
+> 為維持「分支 = image 來源」一致，本次採兩段式：
+>
+> 1. 先加入臨時 `.github/workflows/upgrade-verification.yml`（`push` 觸發 `my-config-v2026.11.1`），
+>    與第一次 build 同時 dispatch → 取得型別與行為驗證。
+>    - **Run `42053060861`**（`upgrade-verification.yml`，`headSha=f1477966dc2`）→ **success**
+>      - `Typecheck (core, packages, extensions)` ✅（`pnpm tsgo:core` + `pnpm tsgo:extensions:all`）
+>      - `Han bigram companion index test` ✅（`vitest run --config test/vitest/vitest.extension-memory.config.ts
+extensions/memory-core/src/memory/manager-search.cjk-bigram.test.ts --maxWorkers=1`）
+>    - **Run `42053090925`**（`docker-release.yml`，`headSha=f1477966dc2`）→ **success**
+>      （`prepare` / `build-and-push` amd64+arm64 / `merge` 四腿全綠）
+>    - image tags `2026.11.1`、`v2026.11.1`、`2026.11.1-slim`、`latest`、`main` 全部存在 ✅
+> 2. 移除臨時 workflow（commit `19a9225f00f`），`.github/workflows/` 回復「僅留 `docker-release.yml` 1 檔」，
+>    重新 dispatch → **Run `42055210294`**（`headSha=19a9225f00f`）→ **success** ✅
+>    （`prepare` / `build-and-push` amd64+arm64 / `merge` 四腿全綠，15:27:46Z → 15:39:13Z）
+>    - 最終 manifest digest：**`sha256:8216e6f5b0aad119a15020d1997ad6d22192ec2a4475bb0f0a7a8ed25869eada`**
+>      （OCI index；`linux/amd64` = `sha256:200fdb01…`、`linux/arm64` = `sha256:e3bdcb65…`，含 2 個 attestation manifest）
+>    - 8 個 tags 全部存在且指向同一 digest：`2026.11.1`、`v2026.11.1`、`2026.11.1-slim`、
+>      `v2026.11.1-slim`、`latest`、`slim`、`main`、`main-slim` ✅
 
 ---
 
@@ -412,14 +428,23 @@ kubectl --context n100-cf -n openclaw logs deploy/openclaw-gateway --since=30m 2
 ssh n100-rescue "rsync -aH -A -X /data/services/openclaw/.openclaw/ /root/backup-openclaw-20261105/"
 ```
 
-- [ ] Pre-flight 檢查通過（無殘留 CLI 行程、無 429）
-- [ ] 備份建立完成並驗證：
-  - 對每個 live SQLite 以 `sqlite3 ".backup"` 產生一致快照（快照已含 WAL 內容，移除旁邊 `-wal`/`-shm`），
-    再以 `chown/chmod --reference` 對齊原始權限
-  - `state/openclaw.sqlite` integrity=`ok`、user_version=**22**；
-    `agents/main/agent/openclaw-agent.sqlite` integrity=`ok`、user_version=**27**
-  - `openclaw.json` 完整（含 `meta.lastTouchedVersion`）
-  - 記憶體索引基準記錄（見 1.4 C）已寫入本工作表
+- [x] Pre-flight 檢查通過 ✅
+  - `ps` 無 `openclaw memory` / `openclaw agent` 行程
+  - 最近 3 分鐘 `[memory]` 事件 = **0**
+  - 最近 30 分鐘 `RESOURCE_EXHAUSTED` = **0**
+- [x] 備份建立完成並驗證 ✅
+  - `rsync -aH -A -X /data/services/openclaw/.openclaw/` → `/root/backup-openclaw-20261105/` = **2.4G**
+    （磁碟：509G → 511G used / 1.2T free，30%）
+  - **WAL-aware**：對每個 live SQLite 以 `sqlite3 ".backup"` 產生一致快照，移除快照旁的
+    `-wal`/`-shm`（快照本身已含 WAL 內容），再以 `chown/chmod --reference` 對齊原始權限
+    - `state/openclaw.sqlite` → `user_version=22`、`quick_check=ok` ✅
+    - `agents/main/agent/openclaw-agent.sqlite` → `user_version=27`、`quick_check=ok` ✅
+  - `openclaw.json` 完整存在（9,787 bytes，含 `meta.lastTouchedVersion`）✅
+  - 記憶體索引基準（於快照內驗證）：`memory_index_chunks` = **1,347**、
+    `memory_index_chunks_cjk_fts` = **1,347**（對齊 ✅）、`memory_embedding_cache` = **3,413**；
+    `memory_index_meta_v1` = `model=gemini-embedding-001`、`chunkingVersion=6`、
+    `embeddingInputFormatVersion=0`、`provenanceVersion=1`、`ftsTokenizer=trigram`、
+    `chunkTokens=400`、`chunkOverlap=80`、`vectorDims=3072` ✅
 
 ### 3.2 Kustomize 部署至 N100 K3s
 
@@ -428,54 +453,106 @@ ssh n100-rescue "rsync -aH -A -X /data/services/openclaw/.openclaw/ /root/backup
 kubectl --context n100-cf apply -k ~/kubernetes/openclaw/overlays/n100
 ```
 
-- [ ] 更新 `newTag` 為 `"2026.11.1"`；`kubectl kustomize` 渲染確認 image tag
-- [ ] `kubectl diff -k`（對線上）**僅一處變更**：image tag `2026.10.10 → 2026.11.1`
-- [ ] 部署前 pre-flight 再次採樣（無 memory/agent 行程、無 `[memory]` 事件、無 429）
-- [ ] `kubectl apply -k` 輸出：`deployment.apps/openclaw-gateway configured`，其餘 `unchanged`
-- [ ] 派**背景子代理**監看 `rollout status` 至 `1/1 Running`、`RESTARTS 0`
-- [ ] 同步 `~/kubernetes` git commit & push（並同步 N100 `/home/kuniaki/kubernetes` checkout；
-      該主機無 GitHub 憑證 → 沿用 `git bundle` 傳遞，不得落地任何憑證）
+- [x] 更新 `newTag` 為 `"2026.11.1"`；`kubectl kustomize` 渲染確認 image tag ✅
+- [x] `kubectl diff -k`（對線上）**僅一處變更**：image tag `2026.10.10 → 2026.11.1` ✅
+      （渲染 diff 僅一行；cluster diff 僅 `image:` 一行 + `generation: 117 → 118`）
+- [x] 部署前 pre-flight 再次採樣（無 memory/agent 行程、無 `[memory]` 事件、無 429）✅
+      （[1] ps = NONE；[2] `[memory]` last 3m = 0；[3] `RESOURCE_EXHAUSTED` last 30m = 0）
+- [x] `kubectl apply -k` 輸出：`deployment.apps/openclaw-gateway configured`，其餘 `unchanged` ✅
+      （namespace / secret / service / 2 ingress 全 `unchanged`）
+- [x] 監看 `rollout status` 完成至 `1/1 Running`、`RESTARTS 0` ✅
+- [x] 同步 `~/kubernetes` git commit & push（並同步 N100 `/home/kuniaki/kubernetes` checkout；
+      該主機無 GitHub 憑證 → 沿用 `git bundle` 傳遞，不得落地任何憑證）✅ - Mac：`git commit` → `6d6a227`（`chore(openclaw): bump gateway image to 2026.11.1`）- `git push origin main` → `8d60d2c..6d6a227` ✅ - `git bundle create /tmp/my-k8s-main-20261105.bundle main` → scp → N100
+      `git fetch <bundle> main:refs/remotes/bundle/main` + `git merge --ff-only`
+      → N100 checkout `9b55908` fast-forward 到 **`6d6a227`**，`newTag: "2026.11.1"` ✅ - 清理：`refs/remotes/bundle/main` 已刪、bundle 檔已從 N100 與 Mac 移除 ✅
 
 > **注意**：本次**不需要**「縮容 → `doctor --fix` → 擴容」流程（`state`/`agent` schema 未變更）。
 > 若新 Pod 仍出現 exit code 78（schema 不符），代表實際 schema 與預期不符 → **立即停止並回報**，不要自行改 `user_version`。
 
 ### 3.3 啟動與功能驗證
 
-- [ ] **版本與健康度**
-  - `openclaw --version` = `OpenClaw 2026.11.1`
-  - `/health` → `{"ok":true,"status":"live"}`
-  - Pod `1/1 Running`、`RESTARTS 0`；`imageID` = GHCR manifest digest
-  - 啟動 log：`ERROR` / `FATAL` / `CRITICAL` = 0、`RESOURCE_EXHAUSTED` = 0
-- [ ] **Schema（唯讀確認未變）**
+> 驗證一律以**唯讀**方式進行：`node:sqlite` 以 `readOnly:true` 開啟 live DB、
+> `kubectl get/logs`、唯讀 `exec`。全程未寫 live DB、未執行 `doctor --fix`、未 scale/重啟。
+
+- [x] **版本與健康度** ✅
+  - `openclaw --version` = `OpenClaw 2026.11.1`；`/app/package.json` version = `2026.11.1`
+  - `/health` → `{"ok":true,"status":"live"}`（HTTP 200）；`/healthz` 同樣 200
+  - Pod `openclaw-gateway-7dbf8b979d-29sz2`、`1/1 Running`、**RESTARTS 0**
+  - `imageID` = `ghcr.io/kuniakil/openclaw@sha256:8216e6f5b0aad119a15020d1997ad6d22192ec2a4475bb0f0a7a8ed25869eada`
+    = 期望 manifest digest **完全一致** ✅（kubelet 回報的是 multi-arch index digest）
+  - rollout 約 80 秒完成（`imagePullPolicy: Always`，拉取 1.23 GB 耗 1m27s）
+  - 啟動 log：`ERROR` / `FATAL` / `CRITICAL` = **0**、`RESOURCE_EXHAUSTED` = **0**
+  - `exit code 78` = 0、`doctor --fix` = 0、`migrat` = 0（**未觸發任何 schema 遷移**）
+  - plugin 載入：20 個（anthropic, brave, canvas, cua-computer, device-pair, file-transfer,
+    geolocation, github, google, linux-node, memory-core, microsoft, minimax, ollama,
+    openai, perplexity, talk-voice, tavily, telegram, xai）
+  - `state.schema-preflight` 正常完成（無 schema 不符）
+- [x] **Schema（唯讀確認未變）** ✅
   - `state/openclaw.sqlite` `user_version` = **22**、`quick_check` = `ok`
   - `openclaw-agent.sqlite` `user_version` = **27**、`quick_check` = `ok`
-  - `schema_meta` 的 `startup-migrations` / `state-migrations` 版本未被強制推進
-- [ ] **自訂工具鏈存活**
-  - `locale -a` 含 `en_US.utf8` / `zh_TW.utf8`
-  - `python3 -c "import faster_whisper, edge_tts"` 成功；`ffmpeg`、`rsync` 可用
-  - `/usr/sbin/sshd` 存在；`/usr/local/bin/whisper` 0755 可執行
-  - `/app/dist/embedding-provider-*.mjs` 內含 `MIN_GEMINI_EMBEDDING_INTERVAL_MS`
-- [ ] **記憶體索引未重建且 CJK 伴生索引對齊**（唯讀快照，不碰 live DB）
-  - `memory_index_chunks` 與 `memory_index_chunks_cjk_fts` 筆數**仍相等**
-  - `memory_index_meta_v1.chunkingVersion` 仍為 **6**、`embeddingInputFormatVersion` = 0、`provenanceVersion` = 1
-  - `memory_embedding_cache` 筆數**未暴增**（若暴增 → 代表發生 re-chunk，需追查並套用限速）
-  - 2 字中文召回對照：trigram 主索引對 2 字詞 = 0 rows、CJK bigram companion > 0 rows 且 BM25 可排序；負向對照 = 0 rows
-- [ ] **設定未漂移**
-  - `channels.telegram.groupAllowFrom` 仍為 `["830338761"]`、`groupPolicy` 仍為 `allowlist`
-  - `channels.telegram.dmPolicy` 仍為 `pairing`
-  - `agents.defaults.model.primary` 仍為 `minimax/MiniMax-M3`；`agents.entries.main.model` 仍為 `minimax/MiniMax-M2.5`
-  - `memory.store.fts` 仍為 `{ tokenizer: "trigram", cjk: "bigram" }`
-- [ ] **Gemini 路由抽查**：以唯讀方式確認 embedding 仍走 `google-generative-ai`（見 1.2 E），
-      且記憶體搜尋（2 字詞）回應正常、無 provider 錯誤
-- [ ] **真實訊息往返驗證**：由 Telegram 送一則真實訊息，確認 agent 回覆正常、
-      記憶體召回（中文關鍵詞）正常、log 無 429
+  - `schema_meta`：`primary=22`、`startup-migrations=3`、`state-migrations=3` — **皆未被推進** ✅
+- [x] **自訂工具鏈存活** ✅
+  - `locale -a` 含 `en_US.utf8` / `zh_TW.utf8` ✅
+  - `faster_whisper 1.2.1` / `edge_tts 7.3.1`（用 `python3 -c "import ..."` 驗證，非 `command -v`）✅
+  - `ffmpeg` = `/usr/bin/ffmpeg`、`rsync` = `/usr/bin/rsync` ✅
+  - `/usr/sbin/sshd` 存在（`-rwxr-xr-x`，OpenSSH 9.2）✅
+  - `/usr/local/bin/whisper` 0755 ✅、`/app/docker/entrypoint-ssh.sh` 0755 ✅
+  - `/app/dist/embedding-provider-B5qLBIT2.mjs` 內含 `MIN_GEMINI_EMBEDDING_INTERVAL_MS = 4200` ✅
+- [x] **記憶體索引未重建且 CJK 伴生索引對齊**（唯讀，不碰 live DB）✅
+  - `memory_index_chunks` = **1,347**、`memory_index_chunks_cjk_fts` = **1,347**、**仍相等** ✅
+  - `memory_index_chunks_vec_rowids` = 1,347、`memory_index_sources` = 197
+  - `memory_embedding_cache` = **3,413** — **與升級前完全相同，未暴增** → 零 re-chunk、零重新嵌入 ✅
+  - `memory_index_meta_v1`：`chunkingVersion=6`、`embeddingInputFormatVersion=0`、
+    `provenanceVersion=1`、`ftsTokenizer=trigram`、`model=gemini-embedding-001`、
+    `vectorDims=3072`、`chunkTokens=400`、`chunkOverlap=80` — **全部未變** ✅
+  - 2 字詞「建議」召回對照：
+    - 上游 trigram `memory_index_chunks_fts` MATCH「建議」 = **0 rows**
+    - 自訂 bigram `memory_index_chunks_cjk_fts` MATCH「建議」 = **131 rows**
+    - BM25 可排序：rank 1 = `MEMORY.md`「完整循環：診斷 → 建議 → 等明確同意 → 才執行」
+      （score −3.617，優於 rank 2 −3.579、rank 3 −3.553）✅
+    - 負向對照「齾齾」 = **0 rows** ✅
+  - 孤兒 companion 列 = **0** ✅
+- [x] **設定未漂移** ✅
+  - `channels.telegram.groupAllowFrom` = `["830338761"]`、`groupPolicy` = `"allowlist"` ✅
+    （11.1 新增的 Doctor「Group allowlist fallback」遷移**保留**了明確清單，未覆寫）
+  - `channels.telegram.dmPolicy` = `"pairing"` ✅
+  - `agents.defaults.model.primary` = `"minimax/MiniMax-M3"`；`agents.entries.main.model` = `"minimax/MiniMax-M2.5"` ✅
+  - `memory.search.store.fts` = `{"tokenizer":"trigram","cjk":"bigram"}` ✅
+  - `meta.lastTouchedVersion` = `"2026.10.8"`（**未變** → 11.1 未改寫設定檔，回滾無 future-version-guard 阻擋）
+- [x] **Gemini 路由抽查** ✅
+  - embedding api 預設仍為 `google-generative-ai`
+    （`api: providerConfig?.api ?? "google-generative-ai"`）✅
+  - 上游 11.1 的 `google-interactions` 路由**確實存在**（`provider-models-Cs6J-Qv-.mjs`），
+    但僅作用於官方 AI Studio endpoint 上的 **Flash text 模型**；
+    `gemini-embedding-001` 不符合該 regex → **不影響我們的 embedding 路徑** ✅
+  - 上游 11.1 新增串流 session-index 路徑（`manager-session-index-preparation-CMSNOXGU.mjs`）存在 ✅
+  - 經 Gateway 實測記憶體搜尋：provider `gemini` / `gemini-embedding-001` / backend `builtin`，
+    2 字詞「建議」回傳 **6 筆**（hits 6、candidateHits 6、withheldHits 0），
+    來源 `MEMORY.md` / `memory/dreaming/light/*`，無 provider 錯誤 ✅
+  - 全程 `RESOURCE_EXHAUSTED` = **0**、HTTP 429 = **0** ✅
+- [x] **真實訊息往返驗證** ✅
+  - 經 Gateway + Telegram 送出真實訊息 → log：
+    `outbound send ok accountId=default chatId=830338761 messageId=2742 operation=sendMessage deliveryKind=text chunkCount=1` ✅
+  - agent 回覆正常（模型 `minimax/MiniMax-M3.1-Flash-Preview`，`stopReason=stop`）
+  - 記憶體召回（中文關鍵詞）正常（見上）
+  - log 無 429
+
+> **附註（Pod 內 agent 曾回報舊版本）**：第一次 Telegram 測試時，Pod 內 agent 自述「實測到 2026.10.10」。
+> 經查證是 **agent 從 session transcript 複誦 11-03 那次升級的舊報告**，並非實際量測值 ——
+> 重新以 `exec` 實跑 `openclaw --version` → `OpenClaw 2026.11.1`、`hostname` →
+> `openclaw-gateway-7dbf8b979d-29sz2`、`/app/package.json` → `2026.11.1`，
+> 與 kubelet `imageID` digest 完全一致。**升級本身無問題**；教訓是版本事實必須重新量測，
+> 不可從 transcript 記憶作答（Pod 替換會清掉前一次的 log）。
 
 ### 3.4 收尾
 
-- [ ] 彙整驗證結果與備份清單，向使用者回報
+- [x] 彙整驗證結果與備份清單，向使用者回報 ✅
 - [ ] 依 10.10 的先例處理舊備份（**需使用者明確授權後才刪除**）
-- [ ] 更新本工作表所有勾選項並 commit push
-- [ ] 產出 postmortem 文件（`~/kubernetes/docs/`）
+      → `/root/backup-openclaw-20261103/`（2.3 G）待授權；`/root/backup-openclaw-20261105/`（2.4 G）保留
+- [x] 更新本工作表所有勾選項並 commit push ✅
+- [x] 產出 postmortem 文件（`~/kubernetes/docs/`）✅
+      → `~/kubernetes/docs/openclaw-v2026-11-1-upgrade-postmortem-20261105.md`
+      （commit `f9a5960`，已 push origin/main 並以 `git bundle` 同步 N100 checkout）
 
 ---
 
