@@ -505,6 +505,7 @@ kubectl apply -k ~/kubernetes/openclaw/overlays/n100
     Doctor 自存的 `openclaw-agent.sqlite.pre-startup-migration-*.bak`（185M，schema 25）與
     `openclaw.sqlite.pre-startup-migration-*.bak`（16M，schema 20）屬本次升級，就地回滾點亦保留
   - 磁碟：`/` 505G → 504G / 1.8T（29%）
+  - ⚠️ **2026-11-06 後續更新**：`/root/backup-openclaw-20261103`（2.3G）及 `/root/backup-openclaw-20261103.sh` 已於 2026-11-06 v2026.11.1 升級自檢通過後依「只留最新一次備份」原則清除完畢；現行快照為 `/root/backup-openclaw-20261105`（2.4G）。
 - [x] 在先前升級文章標註已刪除 ✅（`~/kubernetes/docs/`）
   - `docs/openclaw-v2026-10-9-upgrade-20261030.md`：備份追蹤表列 `backup-openclaw-20261030` → **已刪除（2026-11-04）**，
     並補「2026-11-04 清理後現況」與回滾成本說明
