@@ -547,8 +547,8 @@ kubectl --context n100-cf apply -k ~/kubernetes/openclaw/overlays/n100
 ### 3.4 收尾
 
 - [x] 彙整驗證結果與備份清單，向使用者回報 ✅
-- [ ] 依 10.10 的先例處理舊備份（**需使用者明確授權後才刪除**）
-      → `/root/backup-openclaw-20261103/`（2.3 G）待授權；`/root/backup-openclaw-20261105/`（2.4 G）保留
+- [x] 依 10.10 的先例處理舊備份（已於 2026-11-06 OpenClaw 自檢通過後經授權刪除）✅
+      → `/root/backup-openclaw-20261103/`（2.3 G）已刪除清理完畢；`/root/backup-openclaw-20261105/`（2.4 G）完整保留
 - [x] 更新本工作表所有勾選項並 commit push ✅
 - [x] 產出 postmortem 文件（`~/kubernetes/docs/`）✅
       → `~/kubernetes/docs/openclaw-v2026-11-1-upgrade-postmortem-20261105.md`
