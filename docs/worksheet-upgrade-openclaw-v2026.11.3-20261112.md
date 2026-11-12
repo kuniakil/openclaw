@@ -96,7 +96,7 @@
 - [x] `gh workflow run docker-release.yml --repo kuniakil/openclaw --ref my-config-v2026.11.3 -f tag=v2026.11.3 -f platforms=all`
 - [x] 驗證 run：`event=workflow_dispatch`、`headBranch=my-config-v2026.11.3`、`headSha` 為我們的 commit (`8f97237a2e1`)
 - [x] 若 HTTP 422 "Actions has been disabled" → 到 `https://github.com/kuniakil/openclaw/actions` 點 banner（已手動解除）
-- [ ] （子代理）`gh run watch`（Run ID: 43207683257）；完成後 `docker buildx imagetools inspect` 檢查 `2026.11.3 v2026.11.3 2026.11.3-slim latest main`
+- [x] （子代理）`gh run watch`（Run ID: 43208774990；前一個 43207683257 因解鎖瞬間無 jobs 殘留而重新派發）；完成後 `docker buildx imagetools inspect` 檢查 `2026.11.3 v2026.11.3 2026.11.3-slim latest main`
 
 ### 2.8 部署（K3s，參考 `docker-image-rebuild`）
 
