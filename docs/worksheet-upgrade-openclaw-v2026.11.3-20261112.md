@@ -87,16 +87,16 @@
 
 ### 2.6 Worksheet、推送
 
-- [ ] commit：`docs: add v2026.11.3 upgrade worksheet`
-- [ ] `git push -u origin my-config-v2026.11.3`（**不推 tag**）
+- [x] commit：`docs: add v2026.11.3 upgrade worksheet`
+- [x] `git push -u origin my-config-v2026.11.3`（**不推 tag**）
 
 ### 2.7 觸發建置（再次確認後）
 
-- [ ] `grep -A6 workflow_dispatch: .github/workflows/docker-release.yml` 確認 input 為 `tag`
-- [ ] `gh workflow run docker-release.yml --repo kuniakil/openclaw --ref my-config-v2026.11.3 -f tag=v2026.11.3 -f platforms=all`
-- [ ] 驗證 run：`event=workflow_dispatch`、`headBranch=my-config-v2026.11.3`、`headSha` 為我們的 commit
-- [ ] 若 HTTP 422 "Actions has been disabled" → 到 `https://github.com/kuniakil/openclaw/actions` 點 banner（勿清 cache、勿改 settings）
-- [ ] （子代理）`gh run watch`；完成後 `docker buildx imagetools inspect` 檢查 `2026.11.3 v2026.11.3 2026.11.3-slim latest main`
+- [x] `grep -A6 workflow_dispatch: .github/workflows/docker-release.yml` 確認 input 為 `tag`
+- [x] `gh workflow run docker-release.yml --repo kuniakil/openclaw --ref my-config-v2026.11.3 -f tag=v2026.11.3 -f platforms=all`
+- [x] 驗證 run：`event=workflow_dispatch`、`headBranch=my-config-v2026.11.3`、`headSha` 為我們的 commit (`8f97237a2e1`)
+- [x] 若 HTTP 422 "Actions has been disabled" → 到 `https://github.com/kuniakil/openclaw/actions` 點 banner（已手動解除）
+- [ ] （子代理）`gh run watch`（Run ID: 43207683257）；完成後 `docker buildx imagetools inspect` 檢查 `2026.11.3 v2026.11.3 2026.11.3-slim latest main`
 
 ### 2.8 部署（K3s，參考 `docker-image-rebuild`）
 
