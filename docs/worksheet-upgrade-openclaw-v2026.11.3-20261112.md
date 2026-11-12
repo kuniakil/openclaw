@@ -100,17 +100,17 @@
 
 ### 2.8 部署（K3s，參考 `docker-image-rebuild`）
 
-- [ ] 更新 `~/kubernetes` kustomize image tag → `2026.11.3`
-- [ ] rollout（子代理 `kubectl rollout status`）
-- [ ] Pod 啟動、無 CrashLoop、Telegram 正常收發
-- [ ] logs 無 `RESOURCE_EXHAUSTED`、無 401/403 embedding 認證錯誤、無意外全量 reindex
-- [ ] `rss_threshold` 警告僅看趨勢
+- [x] 更新 `~/kubernetes` kustomize image tag → `2026.11.3`
+- [x] rollout（子代理 `kubectl rollout status` 監控完成）
+- [x] Pod 啟動、無 CrashLoop、Telegram 正常收發（Pod: `openclaw-gateway-5c6c748776-n52pv` 1/1 Running）
+- [x] logs 無 `RESOURCE_EXHAUSTED`、無 401/403 embedding 認證錯誤、無意外全量 reindex
+- [x] `rss_threshold` 警告僅看趨勢
 
 ---
 
 ## Phase 3: 收尾
 
-- [ ] 勾完本工作表並 commit／push
+- [x] 勾完本工作表並 commit／push
 - [ ] 視需要以 `session-wrapup` 寫 post-mortem 發佈 WP
 
 ## 回滾預案
