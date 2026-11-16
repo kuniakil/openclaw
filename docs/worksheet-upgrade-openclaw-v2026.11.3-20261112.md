@@ -57,7 +57,7 @@
 
 - [x] `git status` 乾淨
 - [x] `git branch backup/my-config-v2026.11.2 origin/my-config-v2026.11.2`（若不存在）
-- [x] （建議）備份線上 PVC / `openclaw.json`（已於 N100 建立 `/root/backup-openclaw-20261112-v2026.11.3` 2.4G 完整快照，並於 Pod 內備份 `openclaw.json.bak-v2026.11.2`）
+- [x] （建議）備份線上 PVC / `openclaw.json`（已於 N100 建立 `/root/backup-openclaw-20261112-v2026.11.3` 2.4G 完整快照，並於 Pod 內備份 `openclaw.json.bak-v2026.11.2`；該 N100 舊備份已於 2026-11-16 升級 `v2026.11.4` 驗收後依使用者確認刪除）
 - [x] `git rev-parse upstream-v2026.11.3^{commit}` = `847611dcaa3b…`
 
 ### 2.2 建立新分支

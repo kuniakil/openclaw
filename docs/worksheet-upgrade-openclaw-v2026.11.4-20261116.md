@@ -121,7 +121,8 @@
 ## Phase 3: 收尾與清理
 
 - [x] 更新並 commit/push 本工作表完成狀態（含 `~/kubernetes` repo 的 image tag 變更）
-- [ ] 彙整驗證結果並**等待使用者確認是否刪除 N100 備份**（`/root/backup-openclaw-20261112-v2026.11.3` 2.4G 與 `/root/backup-openclaw-20261116-v2026.11.4` 2.4G）
+- [x] 完成 Telegram 實機升級後檢查（`openclaw-upgrade-check` A–K 16 項全數通過；memory chunks 1434→1459 增量同步且 `fts == cjk_fts == 1459`；0 429、0 reindex、cgroup 2.03–2.14 GiB）
+- [x] 依使用者指示刪除舊備份 `/root/backup-openclaw-20261112-v2026.11.3`（2.4G），保留本次備份 `/root/backup-openclaw-20261116-v2026.11.4`（2.4G；N100 `/` 剩餘 `1.1T` / `36%` used）
 
 ## 回滾預案（Rollback Plan）
 
