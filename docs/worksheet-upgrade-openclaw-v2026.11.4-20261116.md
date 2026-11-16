@@ -100,12 +100,12 @@
 
 ### 2.7 觸發 GHCR Matrix Build 與監控
 
-- [ ] `grep -A6 workflow_dispatch: .github/workflows/docker-release.yml` 確認 dispatch input 為 `tag`
-- [ ] 觸發建置：
+- [x] `grep -A6 workflow_dispatch: .github/workflows/docker-release.yml` 確認 dispatch input 為 `tag`
+- [x] 觸發建置：
       `gh workflow run docker-release.yml --repo kuniakil/openclaw --ref my-config-v2026.11.4 -f tag=v2026.11.4 -f platforms=all`
-- [ ] 驗證觸發之 Run：`event=workflow_dispatch`、`headBranch=my-config-v2026.11.4`、`headSha` 為我們的最新 commit
-- [ ] （若遇 HTTP 422 Actions auto-disable，通知或至 `https://github.com/kuniakil/openclaw/actions` 點擊橫幅重新啟用）
-- [ ] **派發背景子代理**執行 `gh run watch <run_id> --repo kuniakil/openclaw`
+- [x] 驗證觸發之 Run：`event=workflow_dispatch`、`headBranch=my-config-v2026.11.4`、`headSha` 為我們的 commit（`b7688d751ec`）、Run ID: `43867859308`（`https://github.com/kuniakil/openclaw/actions/runs/43867859308`）
+- [x] 無觸發 HTTP 422 Actions auto-disable
+- [ ] **派發背景子代理**執行 `gh run watch 43867859308 --repo kuniakil/openclaw`
 - [ ] Build 完成後以 `docker buildx imagetools inspect` 驗證 tags：`2026.11.4`、`v2026.11.4`、`2026.11.4-slim`、`latest`、`main`
 
 ### 2.8 K3s 部署與滾動驗證
