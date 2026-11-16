@@ -105,23 +105,23 @@
       `gh workflow run docker-release.yml --repo kuniakil/openclaw --ref my-config-v2026.11.4 -f tag=v2026.11.4 -f platforms=all`
 - [x] 驗證觸發之 Run：`event=workflow_dispatch`、`headBranch=my-config-v2026.11.4`、`headSha` 為我們的 commit（`b7688d751ec`）、Run ID: `43867859308`（`https://github.com/kuniakil/openclaw/actions/runs/43867859308`）
 - [x] 無觸發 HTTP 422 Actions auto-disable
-- [ ] **派發背景子代理**執行 `gh run watch 43867859308 --repo kuniakil/openclaw`
-- [ ] Build 完成後以 `docker buildx imagetools inspect` 驗證 tags：`2026.11.4`、`v2026.11.4`、`2026.11.4-slim`、`latest`、`main`
+- [x] **派發背景子代理**執行 `gh run watch 43867859308 --repo kuniakil/openclaw`（`prepare`、`amd64`、`arm64`、`merge` 全部 `success`）
+- [x] Build 完成後以 `docker buildx imagetools inspect` 驗證 tags：`2026.11.4`、`v2026.11.4`、`2026.11.4-slim`、`latest`、`main`（皆指向 multi-arch index `sha256:f8f267af822cd201e36d06ca4cb249ba9ebb1db294aee6cd3b1af9c1e8f36ce5`）
 
 ### 2.8 K3s 部署與滾動驗證
 
-- [ ] 更新 `~/kubernetes/openclaw/overlays/n100/kustomization.yaml` 的 `newTag` 為 `"2026.11.4"`
-- [ ] 執行 `kubectl apply -k ~/kubernetes/openclaw/overlays/n100`
-- [ ] **派發背景子代理**監控 `kubectl rollout status deployment/openclaw-gateway -n openclaw`
-- [ ] 驗證 Pod `1/1 Running`、`openclaw --version` 為 `2026.11.4`、自訂工具鏈（`faster-whisper`、`edge-tts`、`ffmpeg`、`rsync`）正常
-- [ ] 檢查 Gateway logs：確認無 `RESOURCE_EXHAUSTED` (429)、無 401/403 embedding 錯誤、無意外全量 reindex，`rss_threshold` 僅觀察趨勢
+- [x] 更新 `~/kubernetes/openclaw/overlays/n100/kustomization.yaml` 的 `newTag` 為 `"2026.11.4"`
+- [x] 執行 `kubectl apply -k ~/kubernetes/openclaw/overlays/n100`
+- [x] **派發背景子代理**監控 `kubectl rollout status deployment/openclaw-gateway -n openclaw`（`successfully rolled out`）
+- [x] 驗證 Pod `openclaw-gateway-694894b6b7-g5qkc` 為 `1/1 Running`（`RESTARTS 0`）、`openclaw --version` 為 `OpenClaw 2026.11.4`、自訂工具鏈（`faster-whisper 1.2.1`、`/usr/local/bin/whisper`、`/usr/local/bin/edge-tts`、`/usr/bin/ffmpeg`、`/usr/bin/rsync`、`/usr/bin/tini`、`/usr/sbin/sshd`、`/app/docker/entrypoint-ssh.sh`、`en_US.utf8`/`zh_TW.utf8`）正常
+- [x] 檢查 Gateway logs：20 plugins 正常載入、Telegram `@N100_openclaw_mike_bot` 啟動輪詢，無 `RESOURCE_EXHAUSTED` (429)、無 401/403 embedding 錯誤、無意外全量 reindex，無 `rss_threshold` 警告
 
 ---
 
 ## Phase 3: 收尾與清理
 
-- [ ] 更新並 commit/push 本工作表完成狀態（含 `~/kubernetes` repo 的 image tag 變更）
-- [ ] 彙整驗證結果並**詢問使用者是否刪除 N100 備份**（`/root/backup-openclaw-20261112-v2026.11.3` 與 `/root/backup-openclaw-20261116-v2026.11.4`）
+- [x] 更新並 commit/push 本工作表完成狀態（含 `~/kubernetes` repo 的 image tag 變更）
+- [ ] 彙整驗證結果並**等待使用者確認是否刪除 N100 備份**（`/root/backup-openclaw-20261112-v2026.11.3` 2.4G 與 `/root/backup-openclaw-20261116-v2026.11.4` 2.4G）
 
 ## 回滾預案（Rollback Plan）
 
