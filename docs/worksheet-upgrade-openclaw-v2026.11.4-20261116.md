@@ -123,6 +123,12 @@
 - [x] 更新並 commit/push 本工作表完成狀態（含 `~/kubernetes` repo 的 image tag 變更）
 - [x] 完成 Telegram 實機升級後檢查（`openclaw-upgrade-check` A–K 16 項全數通過；memory chunks 1434→1459 增量同步且 `fts == cjk_fts == 1459`；0 429、0 reindex、cgroup 2.03–2.14 GiB）
 - [x] 依使用者指示刪除舊備份 `/root/backup-openclaw-20261112-v2026.11.3`（2.4G），保留本次備份 `/root/backup-openclaw-20261116-v2026.11.4`（2.4G；N100 `/` 剩餘 `1.1T` / `36%` used）
+- [x] 升級後設定修復與環境清理：
+  - 備份 `openclaw.json` 至 `openclaw.json.bak-20261116-m31`，將 `agents.defaults.model.primary` 與 `agents.entries.main.model` 切換為 `minimax/MiniMax-M3.1-Flash-Preview`（保留 `minimax/MiniMax-M3`），移除將於 2026-11-18 下架的 `M2.5`/`M2.5-Highspeed`/`M2.7`
+  - 透過 `openclaw cron edit` 綁定 `Memory Dreaming Promotion`（`c870fbf5-4d9b-4773-8e51-eef8c62beaad`）至 `minimax/MiniMax-M3.1-Flash-Preview@minimax:default`（寫入 `inferenceBinding`）
+  - 刪除舊隔離目錄 `agent.legacy-1788937203594` 與舊手機 session `agent:main:node-57c547526410`
+  - 短暫縮容 Gateway 至 0 啟動 `openclaw-maintenance` Pod 執行 `openclaw doctor --fix --non-interactive --yes`（正規化 1 筆 legacy session delivery 欄位並更新 4 個內建 plugins 至 `2026.11.4`），並清除 3 筆 142–145 天前失敗的 Telegram dead-letters
+  - 恢復上線後新 Pod `openclaw-gateway-694894b6b7-f864f` 為 `1/1 Running`（`RESTARTS 0`），日誌確認 `agent model: minimax/MiniMax-M3.1-Flash-Preview (thinking=max, fast=off)`，Doctor 複驗與 dead-letters 清零通過，同步更新至 `/root/backup-openclaw-20261116-v2026.11.4`
 
 ## 回滾預案（Rollback Plan）
 
