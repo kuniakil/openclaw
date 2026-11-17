@@ -284,54 +284,54 @@ agent 27 → 38 對應 `AGENT_*_SCHEMA_VERSION`：`write-layout-v28` → `index-
 
 ### 2.6 Commit Worksheet 並推送分支至 Fork (`origin`)
 
-- [ ] `git add docs/worksheet-upgrade-openclaw-v2026.11.5-20261117.md && git commit -m "docs: add v2026.11.5 upgrade worksheet"`
-- [ ] `git push -u origin my-config-v2026.11.5`（**不推 git tag**；image tag 由 dispatch 輸入決定）
+- [x] `git add docs/worksheet-upgrade-openclaw-v2026.11.5-20261117.md && git commit -m "docs: add v2026.11.5 upgrade worksheet"`
+- [x] `git push -u origin my-config-v2026.11.5`（**不推 git tag**；image tag 由 dispatch 輸入決定）
 
 ### 2.7 觸發 GHCR Matrix Build 與監控
 
 - [x] `grep -A6 workflow_dispatch: .github/workflows/docker-release.yml` 確認 input 為 `tag`
-- [ ] 觸發：`gh workflow run docker-release.yml --repo kuniakil/openclaw --ref my-config-v2026.11.5 -f tag=v2026.11.5 -f platforms=all`
-- [ ] 驗證 Run：`event=workflow_dispatch`、`headBranch=my-config-v2026.11.5`、`headSha` 為我們的 commit（且 `git merge-base --is-ancestor ce792e38b54 <headSha>` 不適用 squash 時，改以 `git grep -l cjk-bigram <headSha>` 確認 CJK 檔案存在）
+- [x] 觸發：`gh workflow run docker-release.yml --repo kuniakil/openclaw --ref my-config-v2026.11.5 -f tag=v2026.11.5 -f platforms=all`
+- [x] 驗證 Run：`event=workflow_dispatch`、`headBranch=my-config-v2026.11.5`、`headSha` 為我們的 commit（且 `git merge-base --is-ancestor ce792e38b54 <headSha>` 不適用 squash 時，改以 `git grep -l cjk-bigram <headSha>` 確認 CJK 檔案存在）
   - 若回 `HTTP 422 Actions has been disabled`：**停止重試**，依 Hard Rule 8 到 `https://github.com/kuniakil/openclaw/actions` 點 banner 重新啟用（不要清 cache、不要改 settings）
-- [ ] **派發背景子代理**執行 `gh run watch <run_id> --repo kuniakil/openclaw`（`prepare` / `amd64` / `arm64` / `merge` 皆須 `success`）
+- [x] **派發背景子代理**執行 `gh run watch <run_id> --repo kuniakil/openclaw`（`prepare` / `amd64` / `arm64` / `merge` 皆須 `success`）
   - 特別確認 arm64 job 的 pip 安裝（trixie + Python 3.13）成功
-- [ ] 以 `docker buildx imagetools inspect` 驗證 tags：`2026.11.5`、`v2026.11.5`、`2026.11.5-slim`、`latest`、`main`
+- [x] 以 `docker buildx imagetools inspect` 驗證 tags：`2026.11.5`、`v2026.11.5`、`2026.11.5-slim`、`latest`、`main`
 
 ### 2.8 K3s 部署與 schema 遷移（不可逆，須先備份）
 
-- [ ] 更新 `~/kubernetes/openclaw/overlays/n100/kustomization.yaml` 的 `newTag` 為 `"2026.11.5"` 並 commit `~/kubernetes` repo
-- [ ] `kubectl -n openclaw scale deployment/openclaw-gateway --replicas=0`（避免 SQLite 寫入鎖衝突）
-- [ ] 啟動一次性維護 Pod（沿用 11.4 做法：同一 hostPath + `secrets-env`）：
-  - [ ] 執行 `openclaw doctor --fix --non-interactive --yes`
-  - [ ] 確認日誌出現 `Upgraded agent database schema ...: v27 -> v38` 與 state schema 22→36 的遷移紀錄
-  - [ ] 確認 `openclaw --version` = `OpenClaw 2026.11.5`
-  - [ ] 以唯讀 sqlite 檢查 agent DB：`memory_index_chunks` / `_fts` / `_cjk_fts` 筆數應一致（升級前 1467 ×3）；不符先停下評估，勿直接上線
-- [ ] 刪除維護 Pod，`kubectl apply -k ~/kubernetes/openclaw/overlays/n100` 恢復 `replicas=1`
-- [ ] **派發背景子代理**監控 `kubectl rollout status deployment/openclaw-gateway -n openclaw`
-- [ ] 確認 Pod `1/1 Running`、`RESTARTS 0`
+- [x] 更新 `~/kubernetes/openclaw/overlays/n100/kustomization.yaml` 的 `newTag` 為 `"2026.11.5"` 並 commit `~/kubernetes` repo
+- [x] `kubectl -n openclaw scale deployment/openclaw-gateway --replicas=0`（避免 SQLite 寫入鎖衝突）
+- [x] 啟動一次性維護 Pod（沿用 11.4 做法：同一 hostPath + `secrets-env`）：
+  - [x] 執行 `openclaw doctor --fix --non-interactive --yes`
+  - [x] 確認日誌出現 `Upgraded agent database schema ...: v27 -> v38` 與 state schema 22→36 的遷移紀錄
+  - [x] 確認 `openclaw --version` = `OpenClaw 2026.11.5`
+  - [x] 以唯讀 sqlite 檢查 agent DB：`memory_index_chunks` / `_fts` / `_cjk_fts` 筆數應一致（升級前 1467 ×3）；不符先停下評估，勿直接上線
+- [x] 刪除維護 Pod，`kubectl apply -k ~/kubernetes/openclaw/overlays/n100` 恢復 `replicas=1`
+- [x] **派發背景子代理**監控 `kubectl rollout status deployment/openclaw-gateway -n openclaw`
+- [x] 確認 Pod `1/1 Running`、`RESTARTS 0`
 - [ ] ⚠️ **若首次啟動因 `disk I/O error | ERR_SQLITE_ERROR` 失敗（上游 #200583）→ 直接重啟一次 Pod，勿回滾**（重啟即恢復）
 
 ### 2.9 部署後實機驗證（沿用 `openclaw-upgrade-check` A–K 16 項）
 
-- [ ] `openclaw --version` = `OpenClaw 2026.11.5`
-- [ ] 自訂工具鏈：`faster-whisper 1.2.1`、`/usr/local/bin/whisper`、`/usr/local/bin/edge-tts`、`/usr/bin/ffmpeg`、`/usr/bin/rsync`、`/usr/bin/tini`、`/usr/sbin/sshd`、`/app/docker/entrypoint-ssh.sh`、`en_US.utf8` / `zh_TW.utf8`
-- [ ] sshd 在 trixie 上可正常啟動（`/usr/sbin/sshd -f ... -D`）
-- [ ] Gateway logs：20 plugins 正常載入、Telegram `@N100_openclaw_mike_bot` 輪詢啟動、無 429 / `RESOURCE_EXHAUSTED`、無意外全量 reindex、無 `rss_threshold` 警告
-- [ ] Memory 索引：`chunks == fts == cjk_fts`（升級前 1467 / 1467 / 1467），且確認 `cjk_fts` 已隨新 schema／epoch 重建對齊
-- [ ] 2 字中文查詢實測（方案 B）：透過 Gateway 路徑查詢雙字詞（如「配置」「設定」），確認 `textScore > 0` 且維持 BM25 可排序
-- [ ] Cron 排程（`Memory Dreaming Promotion` 等）維持 `inferenceBinding` 綁定且未中斷
-- [ ] **比對升級前後的 cron／automation 清單**（state v30 heartbeat → automation 折疊會改寫排程資料；確認無新增、重複或遺失）
+- [x] `openclaw --version` = `OpenClaw 2026.11.5`
+- [x] 自訂工具鏈：`faster-whisper 1.2.1`、`/usr/local/bin/whisper`、`/usr/local/bin/edge-tts`、`/usr/bin/ffmpeg`、`/usr/bin/rsync`、`/usr/bin/tini`、`/usr/sbin/sshd`、`/app/docker/entrypoint-ssh.sh`、`en_US.utf8` / `zh_TW.utf8`
+- [x] sshd 在 trixie 上可正常啟動（`/usr/sbin/sshd -f ... -D`）
+- [x] Gateway logs：20 plugins 正常載入、Telegram `@N100_openclaw_mike_bot` 輪詢啟動、無 429 / `RESOURCE_EXHAUSTED`、無意外全量 reindex、無 `rss_threshold` 警告
+- [x] Memory 索引：`chunks == fts == cjk_fts`（升級前 1467 / 1467 / 1467），且確認 `cjk_fts` 已隨新 schema／epoch 重建對齊
+- [x] 2 字中文查詢實測（方案 B）：透過 Gateway 路徑查詢雙字詞（如「配置」「設定」），確認 `textScore > 0` 且維持 BM25 可排序
+- [x] Cron 排程（`Memory Dreaming Promotion` 等）維持 `inferenceBinding` 綁定且未中斷
+- [x] **比對升級前後的 cron／automation 清單**（state v30 heartbeat → automation 折疊會改寫排程資料；確認無新增、重複或遺失）
 - [ ] **24h 內確認 cron 持續觸發**（上游 #200629：worker 遺失後排程會靜默停擺，需重啟 Gateway）
 - [ ] 記憶體驗證走 Gateway 路徑（`openclaw agent`），**不要**用 CLI `openclaw memory search/index`（上游 #200557）
 - [ ] Telegram 實機往返（收發、回覆、審批 topic 隔離）
-- [ ] `openclaw doctor --non-interactive` Error 級 = 0
-- [ ] 記憶體 cgroup 觀察（上次基準 2.03–2.14 GiB）
+- [x] `openclaw doctor --non-interactive` Error 級 = 0（僅預期容器內無 systemd busctl 提示）
+- [x] 記憶體 cgroup 觀察（上次基準 2.03–2.14 GiB）
 
 ---
 
 ## Phase 3: 收尾與清理
 
-- [ ] 更新本工作表完成狀態並 commit / push
+- [x] 更新本工作表完成狀態並 commit / push
 - [ ] 產出 post-mortem 文件至 `~/kubernetes/docs/`（對齊 `openclaw-v2026-11-4-upgrade-20261116.md` 格式），必要時發佈至 WordPress 知識庫
 - [ ] 觀察期（3–5 天）後刪除舊備份 `/root/backup-openclaw-20261116-v2026.11.4`，僅保留 `/root/backup-openclaw-20261117-pre-v2026.11.5`
 - [ ] 更新 `~/kubernetes/docs/service-version-matrix.md`
