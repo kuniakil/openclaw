@@ -224,14 +224,14 @@ agent 27 → 38 對應 `AGENT_*_SCHEMA_VERSION`：`write-layout-v28` → `index-
 
 ### 1.10 上游已知問題（2026-11-16 起，針對 11.4 → 11.5）
 
-| Issue                                                         | 狀態   | 內容                                                                                                          | 對我們的處置                                                                                                                                                  |
-| :------------------------------------------------------------ | :----- | :------------------------------------------------------------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [#200583](https://github.com/openclaw/openclaw/issues/200583) | open   | **從 11.4 升級後第一次啟動 Gateway 會以 `disk I/O error                                                       | ERR_SQLITE_ERROR`失敗，重啟即恢復**。根因：升級期 config check 對暫存`.upgrade-…` DB 留著未關閉的 reader，DB 改名後該連線路徑失效，切 WAL 時讀取失敗          | **部署流程必須容許「首次啟動失敗 → 重啟一次」**，不得直接判定升級失敗或回滾 |
-| [#200629](https://github.com/openclaw/openclaw/issues/200629) | open   | cron 復原修正 #194048 **不在** v2026.11.4 / v2026.11.5；shared-state worker 遺失後排程會停擺直到 Gateway 重啟 | 部署後 24h 內確認 cron（含 `Memory Dreaming Promotion`）持續觸發；若停擺 → 重啟 Gateway Pod                                                                   |
-| [#200594](https://github.com/openclaw/openclaw/issues/200594) | open   | `candidate-doctor` 會把**有效**的 cold transcript archive 誤判為 missing，阻擋 update                         | 我們走 Docker image 替換（非 `openclaw update`），不觸發 candidate-doctor；但 `doctor --fix` 若報 cold archive 錯誤，需先以 sha256 / `zstd -t` 驗證檔案再判定 |
-| [#200606](https://github.com/openclaw/openclaw/issues/200606) | open   | candidate Doctor 因 plugin migration 衝突阻擋更新                                                             | 同上，Docker 路徑不適用                                                                                                                                       |
-| [#200224](https://github.com/openclaw/openclaw/issues/200224) | open   | 11.5 beta 拒絕已退役的 `agents.defaults.heartbeat` 設定                                                       | **不適用**：線上 `agents.defaults` 僅有 `compaction / model / modelPolicy / models / workspace`，無 `heartbeat`                                               |
-| [#200557](https://github.com/openclaw/openclaw/issues/200557) | closed | 11.4 起 memory CLI 在 Gateway 運作時拒絕執行（移除線上讀取路徑）                                              | 驗證記憶體時**必須走 Gateway 路徑**（`openclaw agent`），不要用 CLI `memory search/index`                                                                     |
+| Issue                                                         | 狀態   | 內容                                                                                                                                                                                                              | 對我們的處置                                                                                                                                                  |
+| :------------------------------------------------------------ | :----- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [#200583](https://github.com/openclaw/openclaw/issues/200583) | open   | **從 11.4 升級後第一次啟動 Gateway 會以 `disk I/O error \| ERR_SQLITE_ERROR` 失敗，重啟即恢復**。根因：升級期 config check 對暫存 `.upgrade-…` DB 留著未關閉的 reader，DB 改名後該連線路徑失效，切 WAL 時讀取失敗 | **部署流程必須容許「首次啟動失敗 → 重啟一次」**，不得直接判定升級失敗或回滾                                                                                   |
+| [#200629](https://github.com/openclaw/openclaw/issues/200629) | open   | cron 復原修正 #194048 **不在** v2026.11.4 / v2026.11.5；shared-state worker 遺失後排程會停擺直到 Gateway 重啟                                                                                                     | 部署後 24h 內確認 cron（含 `Memory Dreaming Promotion`）持續觸發；若停擺 → 重啟 Gateway Pod                                                                   |
+| [#200594](https://github.com/openclaw/openclaw/issues/200594) | open   | `candidate-doctor` 會把**有效**的 cold transcript archive 誤判為 missing，阻擋 update                                                                                                                             | 我們走 Docker image 替換（非 `openclaw update`），不觸發 candidate-doctor；但 `doctor --fix` 若報 cold archive 錯誤，需先以 sha256 / `zstd -t` 驗證檔案再判定 |
+| [#200606](https://github.com/openclaw/openclaw/issues/200606) | open   | candidate Doctor 因 plugin migration 衝突阻擋更新                                                                                                                                                                 | 同上，Docker 路徑不適用                                                                                                                                       |
+| [#200224](https://github.com/openclaw/openclaw/issues/200224) | open   | 11.5 beta 拒絕已退役的 `agents.defaults.heartbeat` 設定                                                                                                                                                           | **不適用**：線上 `agents.defaults` 僅有 `compaction / model / modelPolicy / models / workspace`，無 `heartbeat`                                               |
+| [#200557](https://github.com/openclaw/openclaw/issues/200557) | closed | 11.4 起 memory CLI 在 Gateway 運作時拒絕執行（移除線上讀取路徑）                                                                                                                                                  | 驗證記憶體時**必須走 Gateway 路徑**（`openclaw agent`），不要用 CLI `memory search/index`                                                                     |
 
 ---
 
@@ -239,48 +239,48 @@ agent 27 → 38 對應 `AGENT_*_SCHEMA_VERSION`：`write-layout-v28` → `index-
 
 ### 2.1 備份與基線確認（強制）
 
-- [ ] `git status -sb` 乾淨
-- [ ] 建立本地分支備份：`git branch -f backup/my-config-v2026.11.4 origin/my-config-v2026.11.4`
-- [ ] 確認 `git rev-parse upstream-v2026.11.5^{commit}` = `e13cf15ece9bbd969b7362927c315362c90c97ff`
-- [ ] **N100 完整備份** `/data/services/openclaw/.openclaw/` → `/root/backup-openclaw-20261117-pre-v2026.11.5`（schema 遷移不可逆，無備份不可回滾；熱備份須含 `-wal`/`-shm` 檔，或於 §2.8 `scale --replicas=0` 後再補做一次停機冷備份）
+- [x] `git status -sb` 乾淨
+- [x] 建立本地分支備份：`git branch -f backup/my-config-v2026.11.4 origin/my-config-v2026.11.4`
+- [x] 確認 `git rev-parse upstream-v2026.11.5^{commit}` = `e13cf15ece9bbd969b7362927c315362c90c97ff`
+- [x] **N100 完整備份** `/data/services/openclaw/.openclaw/` → `/root/backup-openclaw-20261117-pre-v2026.11.5`（schema 遷移不可逆，無備份不可回滾；熱備份須含 `-wal`/`-shm` 檔，或於 §2.8 `scale --replicas=0` 後再補做一次停機冷備份）
   - [ ] 需互動式 sudo（`kuniaki` 帳號對 `/root` 無讀寫權；`sudo -n` 會失敗）
-  - [ ] 核對容量（N100 `/` 現況：`1.8T` 總量、`637G` 已用、`1.1T` 可用）
-- [ ] Mac 本地異地備份關鍵 DB（`openclaw.json`、`openclaw.sqlite`、`openclaw-agent.sqlite`）→ `/Users/mlee/openclaw-backups/`，並以 `gzip -t` 校驗
-- [ ] 盤點既有備份（保留 `/root/backup-openclaw-20261116-v2026.11.4`，確認本次新備份成功後再刪舊檔）
+  - [x] 核對容量（N100 `/` 現況：`1.8T` 總量、`637G` 已用、`1.1T` 可用）
+- [x] Mac 本地異地備份關鍵 DB（`openclaw.json`、`openclaw.sqlite`、`openclaw-agent.sqlite`）→ `/Users/mlee/openclaw-backups/`，並以 `gzip -t` 校驗
+- [x] 盤點既有備份（保留 `/root/backup-openclaw-20261116-v2026.11.4`，確認本次新備份成功後再刪舊檔）
 
 ### 2.2 建立新分支
 
-- [ ] `git checkout -b my-config-v2026.11.5 upstream-v2026.11.5`
+- [x] `git checkout -b my-config-v2026.11.5 upstream-v2026.11.5`
 
 ### 2.3 Purge 官方 Workflows 並覆蓋 Matrix `docker-release.yml`
 
-- [ ] `find .github/workflows -type f ! -name 'docker-release.yml' -delete`（上游 11.5 有 121 個 workflow）
-- [ ] `git checkout origin/my-config-v2026.11.4 -- .github/workflows/docker-release.yml`
-- [ ] `git add .github/workflows && git commit -m "chore: purge official CI workflows; use optimized matrix docker-release.yml"`
+- [x] `find .github/workflows -type f ! -name 'docker-release.yml' -delete`（上游 11.5 有 121 個 workflow）
+- [x] `git checkout origin/my-config-v2026.11.4 -- .github/workflows/docker-release.yml`
+- [x] `git add .github/workflows && git commit -m "chore: purge official CI workflows; use optimized matrix docker-release.yml"`
 
 ### 2.4 移植自訂 Commits（cherry-pick 順序：workflow → Dockerfile → assets → CJK → docs → worksheets）
 
-- [ ] `git cherry-pick 2fe158be6d6 d442939fd66`
+- [x] `git cherry-pick 2fe158be6d6 d442939fd66`
 - [ ] （選用）將 `Dockerfile` 中自訂層的 `openclaw-bookworm-apt-cache` / `openclaw-bookworm-apt-lists` 改名為 `openclaw-trixie-*` 以共用上游 cache（或維持不改）
-- [ ] **CJK 對齊（方案 B）**：`git cherry-pick ce792e38b54`（PR #193815 單一 squash commit；**不再**使用舊 `403fa5afb14`）
-  - [ ] 預期 3 個衝突：`docs/.generated/config-baseline.counts.json` / `.sha256` 不手解，取上游版後執行 `pnpm config:docs:gen` 重新生成；`manager-search-types.ts` 手動合併保留雙方欄位
-  - [ ] `src/infra/update-candidate-state.inventory.test.ts`、`scripts/pr-lib/wrapper-components.txt` 的變更隨 commit 帶入，確認無遺漏
+- [x] **CJK 對齊（方案 B）**：`git cherry-pick ce792e38b54`（PR #193815 單一 squash commit；**不再**使用舊 `403fa5afb14`）
+  - [x] 預期 3 個衝突：`docs/.generated/config-baseline.counts.json` / `.sha256` 不手解，取上游版後執行 `pnpm config:docs:gen` 重新生成；`manager-search-types.ts` 手動合併保留雙方欄位
+  - [x] `src/infra/update-candidate-state.inventory.test.ts`、`scripts/pr-lib/wrapper-components.txt` 的變更隨 commit 帶入，確認無遺漏
   - [ ] 檢查 `AGENT_SCHEMA_COMPATIBILITY.allowedMissingTables` 與 schema fingerprint／postgres catalog 是否需 `pnpm db:postgres:gen`（交 CI 驗證，本機不跑重型檢查）
   - [ ] 閱讀 `manager-source-index-kernel.ts` / `sqlite-search-schema.ts` 確認 11.5（agent v38）下 `cjk_fts` 重建判定行為（見 §1.3 提示）
-- [ ] 確認 `docs/reference/memory-config.md` 含 CJK bigram 說明（`ce792e38b54` 未必含文件；缺少再 `git cherry-pick 652dab92b65`，衝突則以 PR 版本為準）
-- [ ] `git checkout origin/my-config-v2026.11.4 -- docs/worksheet-upgrade-openclaw-v2026.*.md` 帶入完整歷史工作表（含 11.4）並 commit
-- [ ] 驗證自訂層仍在：`git grep -q 'Custom: Install faster-whisper' HEAD -- Dockerfile`
-- [ ] 驗證 Gemini 限速仍在：`git grep -n MIN_GEMINI_EMBEDDING_INTERVAL_MS HEAD -- extensions/google/embedding-provider.ts`
-- [ ] 驗證 gemini 並發鎖：`git grep -n 'provider?.id === "gemini"' HEAD -- extensions/memory-core/src/memory/manager-embedding-ops.ts`
-- [ ] 驗證 `assets/whisper`、`docker/entrypoint-ssh.sh` 存在且具執行權限
-- [ ] 驗證 `src/config/zod-schema.memory-search.ts` 保留 `cjk: "bigram"`（與線上 `openclaw.json` 一致）
+- [x] 確認 `docs/reference/memory-config.md` 含 CJK bigram 說明（`ce792e38b54` 未必含文件；缺少再 `git cherry-pick 652dab92b65`，衝突則以 PR 版本為準）
+- [x] `git checkout origin/my-config-v2026.11.4 -- docs/worksheet-upgrade-openclaw-v2026.*.md` 帶入完整歷史工作表（含 11.4）並 commit
+- [x] 驗證自訂層仍在：`git grep -q 'Custom: Install faster-whisper' HEAD -- Dockerfile`
+- [x] 驗證 Gemini 限速仍在：`git grep -n MIN_GEMINI_EMBEDDING_INTERVAL_MS HEAD -- extensions/google/embedding-provider.ts`
+- [x] 驗證 gemini 並發鎖：`git grep -n 'provider?.id === "gemini"' HEAD -- extensions/memory-core/src/memory/manager-embedding-ops.ts`
+- [x] 驗證 `assets/whisper`、`docker/entrypoint-ssh.sh` 存在且具執行權限
+- [x] 驗證 `src/config/zod-schema.memory-search.ts` 保留 `cjk: "bigram"`（與線上 `openclaw.json` 一致）
 
 ### 2.5 本地輕量驗證（嚴禁重型 CI / 本機 docker build）
 
-- [ ] `git status -sb`、`git diff --check`
-- [ ] `git diff upstream-v2026.11.5 --stat -- . ':!docs' ':!.github'` 僅含預期自訂檔案
-- [ ] 確認 `.github/workflows/` 只剩 `docker-release.yml`，且僅有 `workflow_dispatch` 觸發、input 名為 `tag`
-- [ ] 確認 `Dockerfile` base image 為 trixie 且自訂層完整
+- [x] `git status -sb`、`git diff --check`
+- [x] `git diff upstream-v2026.11.5 --stat -- . ':!docs' ':!.github'` 僅含預期自訂檔案
+- [x] 確認 `.github/workflows/` 只剩 `docker-release.yml`，且僅有 `workflow_dispatch` 觸發、input 名為 `tag`
+- [x] 確認 `Dockerfile` base image 為 trixie 且自訂層完整
 
 ### 2.6 Commit Worksheet 並推送分支至 Fork (`origin`)
 
@@ -289,7 +289,7 @@ agent 27 → 38 對應 `AGENT_*_SCHEMA_VERSION`：`write-layout-v28` → `index-
 
 ### 2.7 觸發 GHCR Matrix Build 與監控
 
-- [ ] `grep -A6 workflow_dispatch: .github/workflows/docker-release.yml` 確認 input 為 `tag`
+- [x] `grep -A6 workflow_dispatch: .github/workflows/docker-release.yml` 確認 input 為 `tag`
 - [ ] 觸發：`gh workflow run docker-release.yml --repo kuniakil/openclaw --ref my-config-v2026.11.5 -f tag=v2026.11.5 -f platforms=all`
 - [ ] 驗證 Run：`event=workflow_dispatch`、`headBranch=my-config-v2026.11.5`、`headSha` 為我們的 commit（且 `git merge-base --is-ancestor ce792e38b54 <headSha>` 不適用 squash 時，改以 `git grep -l cjk-bigram <headSha>` 確認 CJK 檔案存在）
   - 若回 `HTTP 422 Actions has been disabled`：**停止重試**，依 Hard Rule 8 到 `https://github.com/kuniakil/openclaw/actions` 點 banner 重新啟用（不要清 cache、不要改 settings）
