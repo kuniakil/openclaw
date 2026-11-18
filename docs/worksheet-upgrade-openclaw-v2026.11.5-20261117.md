@@ -323,7 +323,7 @@ agent 27 → 38 對應 `AGENT_*_SCHEMA_VERSION`：`write-layout-v28` → `index-
 - [x] **比對升級前後的 cron／automation 清單**（state v30 heartbeat → automation 折疊會改寫排程資料；確認無新增、重複或遺失）
 - [ ] **24h 內確認 cron 持續觸發**（上游 #200629：worker 遺失後排程會靜默停擺，需重啟 Gateway）
 - [ ] 記憶體驗證走 Gateway 路徑（`openclaw agent`），**不要**用 CLI `openclaw memory search/index`（上游 #200557）
-- [ ] Telegram 實機往返（收發、回覆、審批 topic 隔離）
+- [x] Telegram 實機往返（收發、回覆、審批 topic 隔離；2026-11-18 08:15 已透過 Telegram `direct:830338761` + `MiniMax-M3.1-Flash-Preview` 完成 16 項自檢往返實測；`agent` DB 四表增量對齊 `1483 / 1483 / 1483 / 1483`，`MATCH '配置'` 前 5 筆 0 錯位）
 - [x] `openclaw doctor --non-interactive` Error 級 = 0（僅預期容器內無 systemd busctl 提示）
 - [x] 記憶體 cgroup 觀察（上次基準 2.03–2.14 GiB）
 
