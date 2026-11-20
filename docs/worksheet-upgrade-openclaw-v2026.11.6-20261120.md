@@ -268,6 +268,41 @@ _"Configured model `minimax/MiniMax-M3.1-Flash-Preview` is not present in the pr
 `model: minimax/MiniMax-M3.1-Flash-Preview@minimax:default` 且 `toolsAllow: ["*"]` → **下一次 2026-11-21 03:00 有失敗風險**。
 （2026-11-20 03:00 那次為 `ok`，但那是升級**前**、舊模型尚正常時。）
 
+#### 1.8.3 處置：已切換預設模型至 `minimax/MiniMax-M3`（使用者 2026-11-20 核准）
+
+```bash
+# 1) 備份（既有備份 + 本次切換前快照）
+cp -a /data/services/openclaw/.openclaw/openclaw.json \
+      /data/services/openclaw/.openclaw/openclaw.json.bak-20261120-m3model
+
+# 2) 預設模型（CLI owner；會觸發 hot reload）
+kubectl -n openclaw exec deploy/openclaw-gateway -- \
+  node dist/index.js models set minimax/MiniMax-M3
+# → 只改 agents.defaults.model.primary；agents.entries.main.model 需另外處理
+
+# 3) agent 條目覆寫（無 CLI；11.5 升級同樣直接編輯 JSON，第 101 行）
+sed -i '101s|"model": "minimax/MiniMax-M3.1-Flash-Preview"|"model": "minimax/MiniMax-M3"|' openclaw.json
+
+# 4) dreaming cron 的模型綁定（CLI owner）
+kubectl -n openclaw exec deploy/openclaw-gateway -- \
+  node dist/index.js cron edit c870fbf5-4d9b-4773-8e51-eef8c62beaad \
+  --model 'minimax/MiniMax-M3@minimax:default'
+```
+
+**熱載入與生效驗證**
+
+| 項目                                  | 結果                                                                                                         |
+| :------------------------------------ | :----------------------------------------------------------------------------------------------------------- |
+| Gateway hot reload                    | `revision 1 accepted (agents.defaults.model.primary)` → `revision 2 accepted (agents.entries.main.model)` ✅ |
+| `models status --json`                | `defaultModel` = `resolvedDefault` = **`minimax/MiniMax-M3`** ✅；`allowed` 仍含兩個模型（M3.1 保留為可選）  |
+| dreaming cron 綁定                    | `"model":"minimax/MiniMax-M3@minimax:default"` ✅；`nextRunAtMs` = 2026-11-21 03:00                          |
+| JSON 有效性                           | `python3 -c json.load(...)` → **VALID JSON** ✅                                                              |
+| 端到端（**不帶任何 `--model` 覆寫**） | 見 §2.9 驗證記錄 ✅                                                                                          |
+
+> `openclaw models set` 只改 `agents.defaults.model.primary`；**`agents.entries.main.model` 優先於預設值**，故必須另外處理，否則主 agent 仍會用舊模型 —— 這是最容易漏掉的一步。
+> `minimax/MiniMax-M3.1-Flash-Preview` **保留在 `agents.defaults.models` 與 `modelPolicy.allow`**，隨時可切回。
+> ℹ️ 附帶觀察：`openclaw models status --plain` 會印出 _"OpenClaw hit an unexpected runtime error"_，但 **exit code = 0** 且 `--json` 輸出完整正常 → 屬上游 `--plain` 渲染器的**非致命**問題，與本次升級與模型切換皆無關，Gateway 端無任何對應錯誤日誌。
+
 ### 1.9 CJK Han Bigram 伴隨索引：相容性驗證（**本版最重要的技術點**）
 
 我們的自訂 feature 在 `packages/memory-host-sdk/src/host/memory-schema.ts` 的 memory index schema admission key 上加了一個元素；上游 11.6 在**同一個物件**上新增了 `lifetime: "process"`。
@@ -599,6 +634,7 @@ kubectl -n openclaw get deploy openclaw-gateway -o jsonpath='{.spec.template.spe
 - [x] **2 字中文查詢實測**（經 Gateway 路徑 `openclaw agent`，**非** CLI `memory search`）✅
   - 決定性底層證據：`memory_index_chunks_cjk_fts MATCH '配置'` → 回傳 4 筆且 **bm25 分數有限**（−3.6926 / −3.6781 / −6.3919 / −5.3129）；**同一詞在主 trigram 索引回傳 0 筆** → 證明伴隨索引正是讓 2 字查詢可排序的那一層 ✅
   - 端到端：`minimax/MiniMax-M3` 跑出 `calls: 3, tools: ["exec","memory_search"], failures: 0`，6 筆 hits，**`textScore: 0.7803`**（首位 `memory/dreaming/light/2026-11-19.md#L14-L31`）✅
+  - **切換預設模型後（不帶任何 `--model` 覆寫）複測**：`executionTrace.attempts = [{provider: minimax, model: MiniMax-M3, result: success}]`、`fallbackUsed: false`、`calls: 3, failures: 0`；查「設定」→ `MEMORY.md#L90` **textScore 0.79986**、`memory/2026-11-19.md#L55-L71` **textScore 0.78738** ✅
   - 線上設定：`memory.search.store.fts = { tokenizer: "trigram", cjk: "bigram" }` → 11.6 strict schema 接受並生效 ✅
 - [x] Cron 排程 `Memory Dreaming Promotion` 維持 `inferenceBinding` 綁定且未中斷 ✅（job_id `c870fbf5-…`、enabled=1、payload=agentTurn，與升級前逐欄相同）
 - [x] **比對升級前後的 cron／automation 清單**：升級前 1 筆 → 升級後 1 筆，**無新增、重複或遺失** ✅
