@@ -523,20 +523,69 @@ kubectl -n openclaw get deploy openclaw-gateway -o jsonpath='{.spec.template.spe
 
 **部署後實機驗證**（沿用 11.5 升級已驗證過的檢查項）
 
+**📌 升級前基準（2026-11-20 於 11.5 線上實測，部署後逐項比對）**
+
+| 指標                          | 升級前實測值                                                                                               |
+| :---------------------------- | :--------------------------------------------------------------------------------------------------------- |
+| `memory_index_chunks`         | **1606**                                                                                                   |
+| `memory_index_chunks_fts`     | **1606**                                                                                                   |
+| `memory_index_chunks_cjk_fts` | **1606**（CJK 索引已與主索引同步 ✅）                                                                      |
+| `session_transcript_fts`      | **2002**                                                                                                   |
+| `cron_jobs`                   | 1 筆：`c870fbf5-4d9b-4773-8e51-eef8c62beaad` / `Memory Dreaming Promotion` / enabled=1 / payload=agentTurn |
+
+> 註：11.5 工作表記錄的 1483 為當日基準；期間記憶體持續增長至 1606，**升級後應 ≥ 1606 且三張 memory 表彼此相等**。
+> `heartbeat-main` cron（`d602b11f-…`）已不在 `cron_jobs` 中（11.5 已停用）→ 本次無此項需觀察。
+
 - [ ] `openclaw --version` = `OpenClaw 2026.11.6`
 - [ ] `kubectl -n openclaw get pods` → `openclaw-gateway` 1/1 Running，**RESTARTS 0**，無 CrashLoopBackOff
 - [ ] Pod log 開機無 `FATAL` / `schema migration` 錯誤
 - [ ] **自訂工具鏈存在**：`faster-whisper 1.2.1`、`/usr/local/bin/whisper`、`/usr/local/bin/edge-tts`、`/usr/bin/ffmpeg`、`/usr/bin/rsync`、`/usr/bin/tini`、`/usr/sbin/sshd`、`/app/docker/entrypoint-ssh.sh`、`en_US.utf8` / `zh_TW.utf8`
 - [ ] sshd 在 trixie 上可正常啟動（`/usr/sbin/sshd -f /home/node/.openclaw/ssh-etc/sshd_config -D`）
 - [ ] Gateway logs：**20 plugins 正常載入**、Telegram bot 輪詢啟動、**無 429 / `RESOURCE_EXHAUSTED`**、**無意外全量 reindex**、**無 `rss_threshold` 警告**
-- [ ] **Memory 索引筆數對齊**：`memory_index_chunks` == `_fts` == `_cjk_fts` == session 表（四表皆應為 **1483**，11.5 Telegram roundtrip 後的基準）
+- [ ] **Memory 索引筆數對齊**：`memory_index_chunks` == `_fts` == `_cjk_fts` == **1606**（或更高），`session_transcript_fts` ≥ 2002
 - [ ] **2 字中文查詢實測**：經 **Gateway 路徑**（`openclaw agent`，非 CLI）查詢雙字詞（如「配置」「設定」），確認 `textScore > 0` 且維持 BM25 可排序 → **CJK bigram 伴隨索引仍生效**
-- [ ] Cron 排程（如 `Memory Dreaming Promotion`）維持 `inferenceBinding` 綁定且未中斷
-- [ ] **比對升級前後的 cron／automation 清單**：確認無新增、重複或遺失
+- [ ] Cron 排程 `Memory Dreaming Promotion` 維持 `inferenceBinding` 綁定且未中斷
+- [ ] **比對升級前後的 cron／automation 清單**：確認無新增、重複或遺失（升級前 = 1 筆）
 - [ ] Telegram 實機往返（收發、回覆、審批 topic 隔離）
 - [ ] `openclaw doctor --non-interactive` **Error 級 = 0**（僅預期容器內無 systemd busctl 提示）
 - [ ] 記憶體 cgroup 觀察（上次基準 **2.03–2.14 GiB**；11.6 重點是降常駐記憶體，應持平或更低）
 - [ ] Pod 收尾乾淨（觀察 #202405：HTTP pool shutdown 可能留下 Node 存活）
+
+**驗證指令（可直接貼上執行）**
+
+```bash
+# [1] 版本
+kubectl -n openclaw exec deploy/openclaw-gateway -- node dist/index.js --version
+
+# [2] 自訂工具鏈（容器內無 sqlite3；faster-whisper 是 Python 套件非 PATH 指令）
+kubectl -n openclaw exec deploy/openclaw-gateway -- sh -lc \
+  "which whisper edge-tts ffmpeg rsync tini sshd; \
+   ls -la /app/docker/entrypoint-ssh.sh; \
+   locale -a | grep -E 'en_US|zh_TW'; \
+   python3 -c 'import faster_whisper,sys; print(\"faster-whisper\", faster_whisper.__version__)'"
+
+# [3] Memory 索引筆數（容器無 sqlite3 → 直接讀 N100 hostPath 的同一份 DB，唯讀）
+ssh root@192.168.31.72 "sqlite3 -readonly /data/services/openclaw/.openclaw/agents/main/agent/openclaw-agent.sqlite \
+  \"SELECT 'chunks',count(*) FROM memory_index_chunks \
+    UNION ALL SELECT 'fts',count(*) FROM memory_index_chunks_fts \
+    UNION ALL SELECT 'cjk_fts',count(*) FROM memory_index_chunks_cjk_fts \
+    UNION ALL SELECT 'session_fts',count(*) FROM session_transcript_fts;\""
+
+# [4] Cron 清單（升級前後比對）
+ssh root@192.168.31.72 "sqlite3 -readonly -separator ' | ' /data/services/openclaw/.openclaw/state/openclaw.sqlite \
+  \"SELECT job_id, name, enabled, payload_kind FROM cron_jobs ORDER BY name;\""
+
+# [5] cgroup 記憶體
+kubectl -n openclaw exec deploy/openclaw-gateway -- sh -lc \
+  "cat /sys/fs/cgroup/memory.current 2>/dev/null || cat /sys/fs/cgroup/memory/memory.usage_in_bytes"
+
+# [6] Doctor
+kubectl -n openclaw exec deploy/openclaw-gateway -- node dist/index.js doctor --non-interactive
+
+# [7] Pod 狀態與 image
+kubectl -n openclaw get pods -l app=openclaw-gateway
+kubectl -n openclaw get deploy openclaw-gateway -o jsonpath='{.spec.template.spec.containers[0].image}'
+```
 
 **兩項已知踩坑（沿用 11.5 經驗）**
 
