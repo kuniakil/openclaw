@@ -604,7 +604,7 @@ kubectl -n openclaw get deploy openclaw-gateway -o jsonpath='{.spec.template.spe
 - [x] **比對升級前後的 cron／automation 清單**：升級前 1 筆 → 升級後 1 筆，**無新增、重複或遺失** ✅
 - [ ] Telegram 實機往返（收發、回覆、審批 topic 隔離）← **未執行**：需使用者端互動（發送訊息到自己的 Telegram），且預設模型的畸形 tool call 問題會干擾（見 §1.8.2）。建議在模型切換後由使用者實測
 - [x] `openclaw doctor --non-interactive` → **exit 0，Error 級 = 0** ✅（僅 1 項「Fix now」為模型目錄提示，見 §1.8.2；另有預期的容器內無 systemd busctl 提示）
-- [x] 記憶體 cgroup 觀察：啟動後量測 2.30–3.89 GiB（量測當下 doctor + agent turn 同時在容器內執行，屬峰值）；待閒置後複測
+- [x] 記憶體 cgroup 觀察：啟動峰值 2.30–3.89 GiB（doctor + agent turn 併發）→ **閒置後 5 次量測 2.24 / 2.24 / 2.24 / 2.24 / 2.23 GiB（穩定）**；11.5 基準 2.03–2.14 GiB → 約高 0.1 GiB，**無單調攀升**，不視為回歸 ✅
 - [x] Pod 收尾乾淨 ✅（`Recreate` 策略下舊 Pod 先terminated、無殘留；新 Pod RESTARTS 0）
 - [x] **額外**：Code Mode 畸形 tool call 導致的無限重試迴圈已手動終止（2 個 session：`agent:main:verify-cjk-1166` / `verify-cjk-1166b`），未留下殘留行程 ✅
 
@@ -664,9 +664,9 @@ kubectl -n openclaw get deploy openclaw-gateway -o jsonpath='{.spec.template.spe
 ## Phase 3: 收尾與清理
 
 - [x] 更新本工作表完成狀態並 commit / push（`docs/worksheet-upgrade-openclaw-v2026.11.6-20261120.md`）
-- [ ] 建立本版快照分支：`git branch -f backup/my-config-v2026.11.6 origin/my-config-v2026.11.6`
-- [ ] 產出 post-mortem 至 `~/kubernetes/docs/openclaw-v2026-11-6-upgrade-20261120.md`（對齊 `openclaw-v2026-11-5-upgrade-20261118.md` 格式：§1 任務背景與目標 / §2 前置分析與關鍵決策 / §3 建置、遷移與部署步驟 / §4 實機驗證結果與待補項目），必要時發佈至 WordPress 知識庫
-- [ ] 更新 `~/kubernetes/docs/service-version-matrix.md`
+- [x] 建立本版快照分支：`backup/my-config-v2026.11.6` → `origin/my-config-v2026.11.6` (`247ec2f9d1b`) ✅
+- [x] 產出 post-mortem 至 `~/kubernetes/docs/openclaw-v2026-11-6-upgrade-20261120.md`（commit `3d961bd`，已推 `my-k8s` origin）✅（對齊 `openclaw-v2026-11-5-upgrade-20261118.md` 格式：§1 任務背景與目標 / §2 前置分析與關鍵決策 / §3 建置、遷移與部署步驟 / §4 實機驗證結果與待補項目），必要時發佈至 WordPress 知識庫
+- [x] 更新 `~/kubernetes/docs/service-version-matrix.md`（openclaw 列 → `2026.11.6`，日期 → 2026-11-20）✅
 - [ ] **備份清理須先問使用者**：觀察期 3–5 天後，才詢問是否刪除 `/root/backup-openclaw-20261116-v2026.11.4`（2.4G）與 `/root/backup-openclaw-20261117-pre-v2026.11.5`（2.4G）（**不可自動刪**）
 - [x] 保留 `my-config-v2026.11.5` 分支與 `origin` 對應分支（回滾用）
 - [x] 記錄待辦：壓縮封存讀取需等上游 #192743 進 stable（§1.8.1）；**預設模型畸形 tool call 問題待使用者決策（§1.8.2）**
