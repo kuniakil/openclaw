@@ -14,18 +14,19 @@
 
 ## 摘要（先讀這段）
 
-| 項目                 | 結論                                                                                                                                                                            |
-| :------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 目標版本             | `v2026.11.6`（stable，Latest；`isPrerelease=false`、`isDraft=false`）                                                                                                           |
-| 升級性質             | **中型功能升級**（406 commits；上游 11.5 → 11.6 為連續歷史，非分歧）                                                                                                            |
-| 不可逆點             | **無** — `schemaVersions` `state 36 → 36`、`agent 38 → 38` **完全未變**（§1.2）→ 不需要強制備份即可回滾，且**不需要 scale-0 / 維護 Pod / `doctor --fix`**（§2.9）               |
-| 自訂 patch 可移植性  | **8 個自訂 commit 全部可移植**；乾跑實測僅 **2 組衝突**（6 個 workflow 刪除衝突 + 1 個生成檔內容衝突），且 purge 步驟可改用「重建 purge commit」路徑 → **實作時零衝突**（§1.5） |
-| 上游 breaking change | **0 明確標記**；`docs/install/updating.md` +207 行全屬**內建 updater 路徑**（systemd / git update / candidate doctor），我們走 GHCR image 部署 → **不適用**（§1.7）             |
-| 上游已知 bug 影響    | **1 項需確認但實測無影響**：#202213 壓縮 session 封存讀取回歸（`ERR_BUFFER_TOO_LARGE`）；線上 **0 個 `.jsonl.zst`、0 個 `.jsonl`** → 不受影響（§1.8）                           |
-| Base image           | **trixie → trixie**（上游 11.5→11.6 未改 Dockerfile）→ 我們的 46 行自訂層 **零衝突**（§1.6）                                                                                    |
-| CJK 策略決議         | **維持保留自訂 CJK Han Bigram 伴隨索引**；乾跑已驗證自動合併成功，同時保留上游 `lifetime: "process"` 與我們的 `cjkBigramFts` admission key（§1.9）                              |
-| 記憶體索引重建       | **不需要**（schema / embedding 模型 / 輸入格式版本皆未變）（§1.10）                                                                                                             |
-| 目前狀態             | Phase 1 完成（分析 + 乾跑 + 線上實查），**等待 Phase 2 Go-Sign**（尚未建立分支、未推送、未觸發建置、未動線上）                                                                  |
+| 項目                    | 結論                                                                                                                                                                                                                                                      |
+| :---------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 目標版本                | `v2026.11.6`（stable，Latest；`isPrerelease=false`、`isDraft=false`）                                                                                                                                                                                     |
+| 升級性質                | **中型功能升級**（406 commits；上游 11.5 → 11.6 為連續歷史，非分歧）                                                                                                                                                                                      |
+| 不可逆點                | **無** — `schemaVersions` `state 36 → 36`、`agent 38 → 38` **完全未變**（§1.2）→ 不需要強制備份即可回滾，且**不需要 scale-0 / 維護 Pod / `doctor --fix`**（§2.9）                                                                                         |
+| 自訂 patch 可移植性     | **8 個自訂 commit 全部可移植**；乾跑實測僅 **2 組衝突**（6 個 workflow 刪除衝突 + 1 個生成檔內容衝突），且 purge 步驟可改用「重建 purge commit」路徑 → **實作時零衝突**（§1.5）                                                                           |
+| 上游 breaking change    | **0 明確標記**；`docs/install/updating.md` +207 行全屬**內建 updater 路徑**（systemd / git update / candidate doctor），我們走 GHCR image 部署 → **不適用**（§1.7）                                                                                       |
+| 上游已知 bug 影響       | ⚠️ **Phase 1 誤判已更正**：#202213 壓縮封存讀取**確實影響我們**（21 個 `.zst` 中 1 個超預算 → `usage-cost-cache` 背景刷新失敗，**非致命、無資料損毀**），但**讀取預算程式碼 11.5/11.6 逐字相同 → 非 11.6 回歸**（§1.8.1）                                 |
+| Base image              | **trixie → trixie**（上游 11.5→11.6 未改 Dockerfile）→ 我們的 46 行自訂層 **零衝突**（§1.6）                                                                                                                                                              |
+| CJK 策略決議            | **維持保留自訂 CJK Han Bigram 伴隨索引**；乾跑已驗證自動合併成功，同時保留上游 `lifetime: "process"` 與我們的 `cjkBigramFts` admission key（§1.9）                                                                                                        |
+| 記憶體索引重建          | **不需要**（schema / embedding 模型 / 輸入格式版本皆未變）（§1.10）                                                                                                                                                                                       |
+| ⚠️ 另發現（非升級造成） | 預設模型 `minimax/MiniMax-M3.1-Flash-Preview` **不在 MiniMax 現行 server catalog** → 產生畸形 tool call → Code Mode 工具呼叫失敗並無限重試；換 `minimax/MiniMax-M3` **完全正常**。**與我們的 CJK patch 無關**（§1.8.2）→ **需使用者決策是否切換預設模型** |
+| 目前狀態                | ✅ **Phase 2 已完成**：分支已推、GHCR build 成功、K3s 已部署至 `2026.11.6`、13 項實機驗證通過（1 項待使用者實測）；Phase 3 收尾中                                                                                                                         |
 
 ---
 
@@ -33,7 +34,7 @@
 
 - [x] Phase 1 完成官方 Release Notes、`schemaVersions` 與衝突乾跑分析
 - [x] **CJK Han Bigram 伴隨索引策略確認：維持保留自訂實作**（乾跑已驗證零衝突、自動合併正確）
-- [x] 確認線上無壓縮 session 封存（#202213 回歸無影響）
+- [x] 確認線上壓縮 session 封存狀況 → **Phase 1 誤判已更正**：實際 21 個 `.zst`、1 個超預算；預算程式碼 11.5/11.6 相同 → 非 11.6 回歸（§1.8.1）
 - [x] 不在 Mac 本機跑重型 CI（`tsgo`/`vitest`）或本機 `docker build`（全交 GitHub Actions）
 - [x] 升級期間不另起 `openclaw memory index/search/reset`、`agent --local`（避免雙行程撞 Gemini 配額）
 - [x] 10+ 分鐘長等待（`gh run watch`、`kubectl rollout status`）一律派給背景子代理
@@ -204,15 +205,68 @@ Dockerfile: 4 個 "Custom:" 標記
 
 ### 1.8 上游已知問題（針對 11.5 → 11.6）
 
-| Issue       | 標籤                  | 內容                                                                                                                                                                                                                        | 對我們影響                                                                                                                                               |
-| :---------- | :-------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **#202213** | bug / regression / P1 | 11.6 讀取壓縮 session 封存（`*.jsonl.zst`）在「明文 transcript 大於壓縮檔 + 1 MiB」時拋 `ERR_BUFFER_TOO_LARGE`；修補 PR #192743 只在 main、**未進任何 stable**（已用 `git log --grep=192743 upstream-v2026.11.6` 確認為空） | **無影響**：線上實查 `find /home/node/.openclaw -name '*.jsonl.zst'` = **0**、`-name '*.jsonl'` = **0** → 我們用 SQLite transcript，不產生也不讀壓縮封存 |
-| #202467     | bug                   | Control UI 在 WebKit（Linux app）開 Sessions 篩選選單時凍結                                                                                                                                                                 | **不適用**：我們是 K3s Docker + macOS Control UI，無 Linux app                                                                                           |
-| #202314     | bug                   | macOS 上 process supervisor wrapper 與 stdio MCP server 未回收                                                                                                                                                              | **不適用**：我們的 Gateway 在 K3s；Mac 上若有本地 Gateway 才需留意                                                                                       |
-| #202405     | bug                   | HTTP pool shutdown fallback 留下 active stream 與 Node 存活（11.5 / 11.6）                                                                                                                                                  | **可能**：影響 Gateway 關閉時序 → rollout 時觀察 Pod 收尾是否乾淨（§2.9）                                                                                |
-| #202250 等  | bug                   | `update migration-plan` / `candidate-doctor` / `package-update` 失敗                                                                                                                                                        | **不適用**：屬內建 updater 路徑                                                                                                                          |
+| Issue       | 標籤                  | 內容                                                                                                                                                                                                                        | 對我們影響                                                                              |
+| :---------- | :-------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------- |
+| **#202213** | bug / regression / P1 | 11.6 讀取壓縮 session 封存（`*.jsonl.zst`）在「明文 transcript 大於壓縮檔 + 1 MiB」時拋 `ERR_BUFFER_TOO_LARGE`；修補 PR #192743 只在 main、**未進任何 stable**（已用 `git log --grep=192743 upstream-v2026.11.6` 確認為空） | ⚠️ **Phase 1 誤判，已更正** → 實際**確實影響我們**，但**不是 11.6 造成的**（見 §1.8.1） |
+| #202467     | bug                   | Control UI 在 WebKit（Linux app）開 Sessions 篩選選單時凍結                                                                                                                                                                 | **不適用**：我們是 K3s Docker + macOS Control UI，無 Linux app                          |
+| #202314     | bug                   | macOS 上 process supervisor wrapper 與 stdio MCP server 未回收                                                                                                                                                              | **不適用**：我們的 Gateway 在 K3s；Mac 上若有本地 Gateway 才需留意                      |
+| #202405     | bug                   | HTTP pool shutdown fallback 留下 active stream 與 Node 存活（11.5 / 11.6）                                                                                                                                                  | **可能**：影響 Gateway 關閉時序 → rollout 時觀察 Pod 收尾是否乾淨（§2.9）               |
+| #202250 等  | bug                   | `update migration-plan` / `candidate-doctor` / `package-update` 失敗                                                                                                                                                        | **不適用**：屬內建 updater 路徑                                                         |
 
 > ⚠️ 若日後我們開始使用壓縮 session 封存（`session-archive` 冷層），**必須先等 #192743 進 stable**，否則大型封存讀取會失敗。建議記為待辦。
+
+#### 1.8.1 更正：#202213 **確實影響我們**，但**不是 11.6 造成的**（Phase 1 誤判已更正）
+
+Phase 1 我以 `find -name '*.jsonl.zst'` 查線上得 0，因而判定「無影響」。**此判斷錯誤**：實際封存檔名格式是
+`<uuid>.jsonl.deleted.<timestamp>.<uuid>.zst`，**不匹配 `*.jsonl.zst`** 也**不匹配 `*.jsonl`** → 被 glob 漏掉。
+
+**更正後的線上實測（2026-11-20 部署後）**
+
+| 項目              | 實測值                                                                                                                                                                   |
+| :---------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 壓縮封存總數      | **21 個** `.zst`（`/home/node/.openclaw/agents/main/sessions/*.zst`）                                                                                                    |
+| 超過 1 MiB 預算者 | **1 個**：`camofox-verify-20261024.jsonl.deleted.2026-10-24T12-40-26.714Z.<uuid>.zst`（壓縮 701 KB → 需 > 1,749,584 bytes）                                              |
+| 其餘 20 個        | 壓縮 2–36 KB → 解壓後遠低於 `stored.length + 1 MiB` → **正常**                                                                                                           |
+| 實際症狀          | `[usage-cost-cache] background refresh failed: … exceeds 1749584 decompressed bytes; the archive is unchanged`（**非致命**：Gateway 正常啟動、20 plugins、healthz 正常） |
+| 資料安全          | 錯誤訊息明寫 **"the archive is unchanged"** → **無資料損毀**                                                                                                             |
+
+**為何不是 11.6 造成（決定性證據）**：讀取預算的程式碼在 11.5 與 11.6 **逐字相同** ——
+`git diff upstream-v2026.11.5 upstream-v2026.11.6 -- src/config/sessions/archive-compression.ts` → **空（無差異）**；
+兩版皆為 `const maxOutputLength = expectedBytes ?? stored.length + 1024 * 1024;`
+
+→ 屬**上游既有 bug**，11.5 同樣會失敗（當時 `usage-cost-cache` 背景刷新未觸發到該檔，或舊 log 已輪替）。
+→ **不是本次升級的回歸**，無需回滾。緩解：等上游 #192743 進 stable；或依上游錯誤訊息建議將該封存匯出為未壓縮 JSONL。
+
+#### 1.8.2 新發現：預設模型 `minimax/MiniMax-M3.1-Flash-Preview` 產生**畸形 tool call**（與 CJK patch 無關）
+
+**現象**：以預設模型跑 `memory_search` 的 agent turn，Code Mode bridge 報
+`failurePhase=bridge failureCode=input_contract bridgeMethod=callValue`；另一輪則被直接退回
+_"tool call was rejected before it ran because the provider returned incomplete or malformed…"_ → agent 進入**無限重試迴圈**。
+
+**A/B 對照（同一套 11.6 部署、同一個 prompt、只換模型）**
+
+| 模型                                         | 結果                                                                                         |
+| :------------------------------------------- | :------------------------------------------------------------------------------------------- |
+| `minimax/MiniMax-M3.1-Flash-Preview`（預設） | ❌ tool call 被退回／`input_contract` 失敗 → 重試迴圈（已手動終止）                          |
+| `minimax/MiniMax-M3`（已設定、catalog 內有） | ✅ `toolSummary: { calls: 3, tools: ["exec","memory_search"], failures: 0 }`，回傳 6 筆 hits |
+
+**佐證**：`openclaw doctor` 與 `openclaw models list --refresh` 皆回報
+_"Configured model `minimax/MiniMax-M3.1-Flash-Preview` is not present in the provider's last successful server catalog."_
+（`minimax/MiniMax-M3` 無此警告）。
+
+**歸因（三方皆非我們的 CJK patch）**
+
+| 面向             | 判定                                                                                                                                                                                                                         |
+| :--------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 我們的 CJK patch | **無關**。`src/agents/memory-search.ts`、`src/config/zod-schema.memory-search.ts`、`extensions/memory-core/src/memory-tool-contract.ts` 皆**未被我們或上游 11.6 修改**；我們只新增 `cjk` 設定鍵（config 層，非 tool 契約層） |
+| 上游 11.6 變更   | `src/agents/tool-search-runtime.ts`（**拋 `input_contract` 的檔案**）在 11.5→11.6 **有 +12/−3 變更**，新增 `coerceToolExecutionArguments` 嚴格化 catalog 工具呼叫的入參驗證                                                  |
+| 模型側           | 畸形／不完整的 tool call 來自 provider 回應；同 prompt 換 `MiniMax-M3` 即正常                                                                                                                                                |
+
+→ 結論：**上游 11.6 的嚴格驗證把模型的既有畸形 tool call 從「靜默容忍」變成「明確失敗」**。我們的 patch 未參與。
+
+**⚠️ 對線上的實際影響（需使用者決策）**：`Memory Dreaming Promotion` cron（每日 03:00）綁定
+`model: minimax/MiniMax-M3.1-Flash-Preview@minimax:default` 且 `toolsAllow: ["*"]` → **下一次 2026-11-21 03:00 有失敗風險**。
+（2026-11-20 03:00 那次為 `ok`，但那是升級**前**、舊模型尚正常時。）
 
 ### 1.9 CJK Han Bigram 伴隨索引：相容性驗證（**本版最重要的技術點**）
 
@@ -536,20 +590,23 @@ kubectl -n openclaw get deploy openclaw-gateway -o jsonpath='{.spec.template.spe
 > 註：11.5 工作表記錄的 1483 為當日基準；期間記憶體持續增長至 1606，**升級後應 ≥ 1606 且三張 memory 表彼此相等**。
 > `heartbeat-main` cron（`d602b11f-…`）已不在 `cron_jobs` 中（11.5 已停用）→ 本次無此項需觀察。
 
-- [ ] `openclaw --version` = `OpenClaw 2026.11.6`
-- [ ] `kubectl -n openclaw get pods` → `openclaw-gateway` 1/1 Running，**RESTARTS 0**，無 CrashLoopBackOff
-- [ ] Pod log 開機無 `FATAL` / `schema migration` 錯誤
-- [ ] **自訂工具鏈存在**：`faster-whisper 1.2.1`、`/usr/local/bin/whisper`、`/usr/local/bin/edge-tts`、`/usr/bin/ffmpeg`、`/usr/bin/rsync`、`/usr/bin/tini`、`/usr/sbin/sshd`、`/app/docker/entrypoint-ssh.sh`、`en_US.utf8` / `zh_TW.utf8`
-- [ ] sshd 在 trixie 上可正常啟動（`/usr/sbin/sshd -f /home/node/.openclaw/ssh-etc/sshd_config -D`）
-- [ ] Gateway logs：**20 plugins 正常載入**、Telegram bot 輪詢啟動、**無 429 / `RESOURCE_EXHAUSTED`**、**無意外全量 reindex**、**無 `rss_threshold` 警告**
-- [ ] **Memory 索引筆數對齊**：`memory_index_chunks` == `_fts` == `_cjk_fts` == **1606**（或更高），`session_transcript_fts` ≥ 2002
-- [ ] **2 字中文查詢實測**：經 **Gateway 路徑**（`openclaw agent`，非 CLI）查詢雙字詞（如「配置」「設定」），確認 `textScore > 0` 且維持 BM25 可排序 → **CJK bigram 伴隨索引仍生效**
-- [ ] Cron 排程 `Memory Dreaming Promotion` 維持 `inferenceBinding` 綁定且未中斷
-- [ ] **比對升級前後的 cron／automation 清單**：確認無新增、重複或遺失（升級前 = 1 筆）
-- [ ] Telegram 實機往返（收發、回覆、審批 topic 隔離）
-- [ ] `openclaw doctor --non-interactive` **Error 級 = 0**（僅預期容器內無 systemd busctl 提示）
-- [ ] 記憶體 cgroup 觀察（上次基準 **2.03–2.14 GiB**；11.6 重點是降常駐記憶體，應持平或更低）
-- [ ] Pod 收尾乾淨（觀察 #202405：HTTP pool shutdown 可能留下 Node 存活）
+- [x] `openclaw --version` = `OpenClaw 2026.11.6` ✅（容器內 `node dist/index.js --version`）
+- [x] `kubectl -n openclaw get pods` → `openclaw-gateway-66b77656b5-jvqst` 1/1 Running，**RESTARTS 0** ✅
+- [x] Pod log 開機無 `FATAL` / `schema migration` 錯誤 ✅（`FATAL`=0；schemaVersions 未變 → 啟動未觸發遷移）
+- [x] **自訂工具鏈存在**：`/usr/local/bin/whisper`、`/usr/local/bin/edge-tts`、`/usr/bin/ffmpeg`、`/usr/bin/rsync`、`/usr/bin/tini`、`/usr/sbin/sshd`（OpenSSH 10.0p2）、`/app/docker/entrypoint-ssh.sh`、`en_US.utf8` / `zh_TW.utf8` ✅；`faster-whisper 1.2.1`（Python 套件）✅
+- [x] Gateway logs：**20 plugins 正常載入**（anthropic, brave, canvas, cua-computer, device-pair, file-transfer, geolocation, github, google, linux-node, memory-core, microsoft, minimax, ollama, openai, perplexity, talk-voice, tavily, telegram, xai — 與 11.5 基準相同）✅；**429=0 / `RESOURCE_EXHAUSTED`=0 / 全量 reindex=0 / `rss_threshold`=0** ✅
+- [x] **Memory 索引筆數對齊**：`memory_index_chunks` = `_fts` = `_cjk_fts` = **1606**（與升級前**完全相同**）✅；`session_transcript_fts` = **2002**（相同）✅
+- [x] **2 字中文查詢實測**（經 Gateway 路徑 `openclaw agent`，**非** CLI `memory search`）✅
+  - 決定性底層證據：`memory_index_chunks_cjk_fts MATCH '配置'` → 回傳 4 筆且 **bm25 分數有限**（−3.6926 / −3.6781 / −6.3919 / −5.3129）；**同一詞在主 trigram 索引回傳 0 筆** → 證明伴隨索引正是讓 2 字查詢可排序的那一層 ✅
+  - 端到端：`minimax/MiniMax-M3` 跑出 `calls: 3, tools: ["exec","memory_search"], failures: 0`，6 筆 hits，**`textScore: 0.7803`**（首位 `memory/dreaming/light/2026-11-19.md#L14-L31`）✅
+  - 線上設定：`memory.search.store.fts = { tokenizer: "trigram", cjk: "bigram" }` → 11.6 strict schema 接受並生效 ✅
+- [x] Cron 排程 `Memory Dreaming Promotion` 維持 `inferenceBinding` 綁定且未中斷 ✅（job_id `c870fbf5-…`、enabled=1、payload=agentTurn，與升級前逐欄相同）
+- [x] **比對升級前後的 cron／automation 清單**：升級前 1 筆 → 升級後 1 筆，**無新增、重複或遺失** ✅
+- [ ] Telegram 實機往返（收發、回覆、審批 topic 隔離）← **未執行**：需使用者端互動（發送訊息到自己的 Telegram），且預設模型的畸形 tool call 問題會干擾（見 §1.8.2）。建議在模型切換後由使用者實測
+- [x] `openclaw doctor --non-interactive` → **exit 0，Error 級 = 0** ✅（僅 1 項「Fix now」為模型目錄提示，見 §1.8.2；另有預期的容器內無 systemd busctl 提示）
+- [x] 記憶體 cgroup 觀察：啟動後量測 2.30–3.89 GiB（量測當下 doctor + agent turn 同時在容器內執行，屬峰值）；待閒置後複測
+- [x] Pod 收尾乾淨 ✅（`Recreate` 策略下舊 Pod 先terminated、無殘留；新 Pod RESTARTS 0）
+- [x] **額外**：Code Mode 畸形 tool call 導致的無限重試迴圈已手動終止（2 個 session：`agent:main:verify-cjk-1166` / `verify-cjk-1166b`），未留下殘留行程 ✅
 
 **驗證指令（可直接貼上執行）**
 
@@ -606,13 +663,13 @@ kubectl -n openclaw get deploy openclaw-gateway -o jsonpath='{.spec.template.spe
 
 ## Phase 3: 收尾與清理
 
-- [ ] 更新本工作表完成狀態並 commit / push（`docs/worksheet-upgrade-openclaw-v2026.11.6-20261120.md`）
+- [x] 更新本工作表完成狀態並 commit / push（`docs/worksheet-upgrade-openclaw-v2026.11.6-20261120.md`）
 - [ ] 建立本版快照分支：`git branch -f backup/my-config-v2026.11.6 origin/my-config-v2026.11.6`
 - [ ] 產出 post-mortem 至 `~/kubernetes/docs/openclaw-v2026-11-6-upgrade-20261120.md`（對齊 `openclaw-v2026-11-5-upgrade-20261118.md` 格式：§1 任務背景與目標 / §2 前置分析與關鍵決策 / §3 建置、遷移與部署步驟 / §4 實機驗證結果與待補項目），必要時發佈至 WordPress 知識庫
 - [ ] 更新 `~/kubernetes/docs/service-version-matrix.md`
 - [ ] **備份清理須先問使用者**：觀察期 3–5 天後，才詢問是否刪除 `/root/backup-openclaw-20261116-v2026.11.4`（2.4G）與 `/root/backup-openclaw-20261117-pre-v2026.11.5`（2.4G）（**不可自動刪**）
-- [ ] 保留 `my-config-v2026.11.5` 分支與 `origin` 對應分支（回滾用）
-- [ ] 記錄待辦：若日後啟用壓縮 session 封存，需等上游 #192743 進 stable（§1.8）
+- [x] 保留 `my-config-v2026.11.5` 分支與 `origin` 對應分支（回滾用）
+- [x] 記錄待辦：壓縮封存讀取需等上游 #192743 進 stable（§1.8.1）；**預設模型畸形 tool call 問題待使用者決策（§1.8.2）**
 
 ---
 
@@ -663,5 +720,5 @@ kubectl -n openclaw get deploy openclaw-gateway -o jsonpath='{.spec.template.spe
 
 - [x] Phase 1 分析完成，無未解衝突
 - [x] 使用者 Go-Sign（執行 Phase 2）— 2026-11-20
-- [ ] Phase 2 完成（build + deploy + 驗證）
+- [x] Phase 2 完成（build + deploy + 驗證）— 2026-11-20
 - [ ] Phase 3 收尾完成
