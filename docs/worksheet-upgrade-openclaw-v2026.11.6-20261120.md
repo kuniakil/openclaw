@@ -748,7 +748,7 @@ kubectl -n openclaw get deploy openclaw-gateway -o jsonpath='{.spec.template.spe
 - [x] 建立本版快照分支：`backup/my-config-v2026.11.6` → `origin/my-config-v2026.11.6` (`247ec2f9d1b`) ✅
 - [x] 產出 post-mortem 至 `~/kubernetes/docs/openclaw-v2026-11-6-upgrade-20261120.md`（commit `3d961bd`，已推 `my-k8s` origin）✅（對齊 `openclaw-v2026-11-5-upgrade-20261118.md` 格式：§1 任務背景與目標 / §2 前置分析與關鍵決策 / §3 建置、遷移與部署步驟 / §4 實機驗證結果與待補項目），必要時發佈至 WordPress 知識庫
 - [x] 更新 `~/kubernetes/docs/service-version-matrix.md`（openclaw 列 → `2026.11.6`，日期 → 2026-11-20）✅
-- [ ] **備份清理須先問使用者**：觀察期 3–5 天後，才詢問是否刪除 `/root/backup-openclaw-20261116-v2026.11.4`（2.4G）與 `/root/backup-openclaw-20261117-pre-v2026.11.5`（2.4G）（**不可自動刪**）
+- [x] **備份清理**（使用者 2026-11-21 明確核准後執行）✅：已刪除 `/root/backup-openclaw-20261116-v2026.11.4`（2.4G）與 `/root/backup-openclaw-20261117-pre-v2026.11.5`（2.4G）；保留 `/root/backup-openclaw-20261120-pre-v2026.11.6`（2.7G）與 `/root/backup-openclaw-20261121-precompaction`（238M）；N100 磁碟 1.1T 可用（38% used）
 - [x] 保留 `my-config-v2026.11.5` 分支與 `origin` 對應分支（回滾用）
 - [x] 記錄待辦：壓縮封存讀取需等上游 #192743 進 stable（§1.8.1）；**預設模型畸形 tool call 問題待使用者決策（§1.8.2）**
 
