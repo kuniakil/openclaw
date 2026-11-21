@@ -268,6 +268,51 @@ _"Configured model `minimax/MiniMax-M3.1-Flash-Preview` is not present in the pr
 `model: minimax/MiniMax-M3.1-Flash-Preview@minimax:default` 且 `toolsAllow: ["*"]` → **下一次 2026-11-21 03:00 有失敗風險**。
 （2026-11-20 03:00 那次為 `ok`，但那是升級**前**、舊模型尚正常時。）
 
+#### 1.8.2.1 更正（2026-11-21）：**真正的根因是 context 壓力，不是模型**
+
+> **上表的歸因不成立。** 2026-11-21 早上 Telegram 實機檢查後追查，證實畸形 tool call 與 429 的**根因是主 session 的 context 壓力**，模型只是次要因素。
+
+**關鍵量測**
+
+| 時點              | 主 session prompt tokens            | gateway 路由                                            | provider 結果                                                |
+| :---------------- | :---------------------------------- | :------------------------------------------------------ | :----------------------------------------------------------- |
+| 07:43（檢查回合） | 63,078 → **183,443**                | `route=compact_only`，`promptBudgetBeforeReserve=12288` | **429 `rate_limit`** × 8、5 次 run errored                   |
+| 07:49 compact 後  | **180,317 → 21,815 tokens**（−88%） | —                                                       | —                                                            |
+| 07:52（驗證回合） | input **43,409**（−76% vs 183K）    | **無** `compact_only`、無 `context-pressure-diagnostic` | **0 個 429**；`calls: 3, failures: 0`，`textScore 0.7972` ✅ |
+
+**因果鏈**：主 session 累積到 **178k/1.0m tokens** → gateway 走 `compact_only` 路徑、每回合預留僅 12,288 token 預算 → 送出**超大 prompt** → 撞 MiniMax 的 TPM 限流 → **429** → 重試 → 回合中止 / tool call 被退回或畸形 → 進入無限重試迴圈。
+
+→ **compact 掉 context 後，連 `MiniMax-M3.1-Flash-Preview` 都能正常運作**（3 次工具呼叫 0 失敗、CJK `textScore 0.7972`）。
+→ 因此「模型畸形 tool call」的說法**不成立**；模型只是**在超大 prompt 下更容易被限流**。`doctor` 關於「不在 provider catalog」的警告是**另一個獨立的次要問題**（該模型仍可正常服務，僅缺少 catalog 條目）。
+
+**我先前的 A/B 證據品質不足**：那組 M3 ✅ / M3.1 ❌ 是在**全新 session** 上跑的，而日誌中**兩筆** `context-pressure-diagnostic` 全部出現在 M3.1 的 run、成功的 M3 run **一筆都沒有** → 「模型」與「context 壓力」在我的測試裡是**混為一談**，當時卻下了確定的模型歸因。
+
+**已執行的處置**
+
+```bash
+# 1) compact 主 session（先備份 DB）
+sqlite3 .../openclaw-agent.sqlite ".backup '/root/backup-openclaw-20261121-precompaction/openclaw-agent.sqlite'"
+kubectl -n openclaw exec deploy/openclaw-gateway -- \
+  node dist/index.js sessions compact "agent:main:main" --timeout 300000
+# → Compacted session agent:main:main (180317 → 21815 tokens).
+
+# 2) 重釘模型（單回合生效；session 層的 live 釘選仍在 M3.1-Flash-Preview）
+kubectl -n openclaw exec deploy/openclaw-gateway -- \
+  node dist/index.js agent --model minimax/MiniMax-M3 --session-key 'agent:main:main' --message '…'
+```
+
+**殘留狀態（如實記錄）**
+
+| 項目                         | 狀態                                                                                                                   |
+| :--------------------------- | :--------------------------------------------------------------------------------------------------------------------- |
+| session 的 **live** 釘選模型 | 仍為 `MiniMax-M3.1-Flash-Preview`（`session_windows` 的 row `11c68240`）；`--model` 只影響該回合，未改寫 live 釘選     |
+| 但實際運作                   | **正常** — compact 後 0 個 429、0 筆 context-pressure、3 次工具呼叫 0 失敗、CJK `textScore 0.7972` ✅                  |
+| config 預設模型              | `minimax/MiniMax-M3`（`defaults.model.primary` + `entries.main.model` + dreaming cron 綁定）→ **新 session 一律用 M3** |
+| dreaming cron（每日 03:00）  | 2026-11-21 03:00 那輪 **status=ok** ✅（模型切換後）                                                                   |
+| `MiniMax-M3.1-Flash-Preview` | **保留**在 `agents.defaults.models` 與 `modelPolicy.allow` → 隨時可切回                                                |
+
+> 若日後 M3.1-Flash-Preview 因 provider 正式下架而失效，處置方式是**重建主 session 的模型釘選**（`--model` 只作用於單回合；需重啟 Gateway 或新建 session 才會套用 config 的 M3）。
+
 #### 1.8.3 處置：已切換預設模型至 `minimax/MiniMax-M3`（使用者 2026-11-20 核准）
 
 ```bash
