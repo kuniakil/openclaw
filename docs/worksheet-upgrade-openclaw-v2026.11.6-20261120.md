@@ -683,9 +683,9 @@ kubectl -n openclaw get deploy openclaw-gateway -o jsonpath='{.spec.template.spe
   - 線上設定：`memory.search.store.fts = { tokenizer: "trigram", cjk: "bigram" }` → 11.6 strict schema 接受並生效 ✅
 - [x] Cron 排程 `Memory Dreaming Promotion` 維持 `inferenceBinding` 綁定且未中斷 ✅（job_id `c870fbf5-…`、enabled=1、payload=agentTurn，與升級前逐欄相同）
 - [x] **比對升級前後的 cron／automation 清單**：升級前 1 筆 → 升級後 1 筆，**無新增、重複或遺失** ✅
-- [ ] Telegram 實機往返（收發、回覆、審批 topic 隔離）← **未執行**：需使用者端互動（發送訊息到自己的 Telegram），且預設模型的畸形 tool call 問題會干擾（見 §1.8.2）。建議在模型切換後由使用者實測
+- [x] Telegram 實機往返 ✅（2026-11-21 07:36 使用者實發 `/openclaw_upgrade_check` → agent 完成 16 項檢查並回傳報告；覆核時發現 8 次 provider 429 → 追查根因為 context 壓力 → compact 後複測 0 個 429、3 次工具呼叫 0 失敗）
 - [x] `openclaw doctor --non-interactive` → **exit 0，Error 級 = 0** ✅（僅 1 項「Fix now」為模型目錄提示，見 §1.8.2；另有預期的容器內無 systemd busctl 提示）
-- [x] 記憶體 cgroup 觀察：啟動峰值 2.30–3.89 GiB（doctor + agent turn 併發）→ **閒置後 5 次量測 2.24 / 2.24 / 2.24 / 2.24 / 2.23 GiB（穩定）**；11.5 基準 2.03–2.14 GiB → 約高 0.1 GiB，**無單調攀升**，不視為回歸 ✅
+- [x] 記憶體 cgroup 觀察：啟動峰值 2.30–3.89 GiB（doctor + agent turn 併發）→ 閒置後 2.24 GiB 穩定 → 8 小時後 2.83 GiB → **compact 主 session 後回落到 2.49 GiB 穩定**；11.5 基準 2.03–2.14 GiB → 約高 0.35 GiB，**無單調攀升**，不視為回歸 ✅
 - [x] Pod 收尾乾淨 ✅（`Recreate` 策略下舊 Pod 先terminated、無殘留；新 Pod RESTARTS 0）
 - [x] **額外**：Code Mode 畸形 tool call 導致的無限重試迴圈已手動終止（2 個 session：`agent:main:verify-cjk-1166` / `verify-cjk-1166b`），未留下殘留行程 ✅
 
@@ -732,7 +732,7 @@ kubectl -n openclaw get deploy openclaw-gateway -o jsonpath='{.spec.template.spe
 
 **升級後 24 小時內追加確認**
 
-- [ ] 確認 cron 持續觸發（上游 #200629：worker 遺失後排程會靜默停擺，需重啟 Gateway）
+- [x] 確認 cron 持續觸發 ✅（2026-11-21 03:00 那一輪 `status=ok`，且是在模型切換之後跑的；上游 #200629 未觸發）
 
 ### 2.10 升級後**不要**做的事
 
@@ -802,4 +802,4 @@ kubectl -n openclaw get deploy openclaw-gateway -o jsonpath='{.spec.template.spe
 - [x] Phase 1 分析完成，無未解衝突
 - [x] 使用者 Go-Sign（執行 Phase 2）— 2026-11-20
 - [x] Phase 2 完成（build + deploy + 驗證）— 2026-11-20
-- [ ] Phase 3 收尾完成
+- [x] Phase 3 收尾完成
