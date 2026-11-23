@@ -566,7 +566,26 @@ kubectl -n openclaw get deploy openclaw-gateway -o jsonpath='{.spec.template.spe
 - [x] Telegram 實機往返（收發、回覆、審批 topic 隔離）✅ — **Gateway 側**：telegram provider 啟動、isolated polling ingress 啟動、收到 2 個 update（596795967 / 596795968）、`messageId=2832` 於 `native_slash_command_fast_path` 完成（19.9s）且無任何 `[error]`；**Agent 側**：使用者於 13:00 發出的升級後檢查要求已完成，產出 16 節自檢報告（版本三合一、Pod 0 重啟、rollout 完整、health 200、doctor error 級僅容器 artifact 1 筆、檔案 md5 逐筆相符、**兩層 Gemini 限速都在**、CJK 三表對齊、索引未重建、20 plugins、error/fatal/429 = 0）→ 結論**通過、無阻斷項目** ✅
   - ⚠️ 同期觀察：Code Mode guest 階段 `ReferenceError` ×3（1 次驗證 session、2 次 Telegram session）→ `src/agents/code-mode-source.ts` 11.6→11.7 逐字未變，屬**模型產碼引用未定義變數**的既定重試行為，**非 11.7 回歸**；回合最終正常結束
   - ⚠️ 同期觀察：`[skills/workshop] … The latest messages exceed this session's context limit` → 該 Telegram session transcript 已 1524 筆，與 11.6 記錄的 context 壓力屬同類問題（非 11.7 造成），建議定期 compact 或另開新 session
-  - 📌 Agent 另回報兩個**我們自訂 skill 的過時假設**（待使用者核准後修補）：`cluster-and-runtime.md` 仍預期 Gemini guard 在 `manager-embedding-ops.ts`（會誤報回歸）、`state-and-diagnostics.md` 以 `logLevelId` 50/60 判定 error（現行 scale 為 1–5，會漏掉全部 error）
+  - 📌 Agent 另回報兩個**自製 skill 的過時假設** → 已於 2026-11-23 交由 agent 自行修補完成（見下方「Skill Workshop 自修」）
+
+#### Skill Workshop 自修（2026-11-23 14:27–14:31，agent 自行完成）
+
+使用者指示把兩個過時假設直接交給 OpenClaw agent 自行查證與修補。投遞方式：經 Gateway 路徑 `openclaw agent`，獨立 session `agent:main:workshop-skill-fix-1177`（刻意避開已達 1524 筆 transcript 的 Telegram session）。
+
+修補對象為 **agent 自製 skill**（Skill Workshop 產物，非我們版控的 repo 檔案）：
+`/data/services/openclaw/.openclaw/agents/main/agent/workshop-skills/openclaw-upgrade-check/references/`
+
+| 檔案                       | 修補前                                                                   | 修補後                                                                                                                                |
+| :------------------------- | :----------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------ |
+| `cluster-and-runtime.md`   | grep `manager-embedding-ops.ts` 的 `provider?.id === "gemini"`，期望 = 1 | 改 grep `google/memory-embedding-adapter.ts` 的 `inlineIndexConcurrency: 1`；期望 pacing = 2 / 併發 = 1，並寫明 manager 端回 0 屬設計 |
+| `state-and-diagnostics.md` | `grep -cE '"logLevelId":(50\|60)'`                                       | 改 `(5\|6)` + 交叉驗證 `grep -cE '"logLevelName":"(ERROR\|FATAL)"'`；並註明 tslog scale 0–6（3=INFO/4=WARN/5=ERROR/6=FATAL）          |
+
+**獨立複驗（我方實測，非轉述）**：pacing = 2 ✅、inlineIndexConcurrency = 1 ✅、`logLevelId (5|6)` = **2** ✅、`logLevelName (ERROR|FATAL)` = **2** ✅；舊規則 `(50|60)` = **0** → 原本會把 2 筆真 error 回報成「乾淨」。
+
+**變更範圍稽核**：`references/` 內只有這兩個檔 mtime 改變（14:27 / 14:31），`SKILL.md`、`acceptance-checklist.md`、`advisory-triage.md`、`reporting-rules.md` mtime 仍為 2026-11-20 23:44；其他 10 個 workshop skill 未動 ✅。agent 另存 3 份 workshop 版本快照至 `.archive/openclaw-upgrade-check/`（可回退），其中第 2 次為其自我修正。
+
+**agent 的補充修正**：我原訊息引用 `/app/src/logging/levels.ts` 作為 scale 來源，但 runtime image 只有 `dist/` + `extensions/`、無 source → 真正的 scale 來源是 tslog 套件本身的 `DEFAULT_LOG_LEVEL_NAMES`（0=SILLY…6=FATAL），並以 `logLevelName` 欄位交叉驗證。
+
 - [x] `openclaw doctor --non-interactive` → **exit 0，Error 級 = 0** ✅（唯一「Fix now」為既有的 `MiniMax-M3.1-Flash-Preview` 不在 provider catalog 提示，與 11.6 相同、非阻斷；另有預期的容器內無 systemd busctl 提示與兩則上游 SDK deprecation warning）
 - [x] 記憶體 cgroup：啟動後 **0.81 GiB → 2.35 GiB**（部署後 4 分鐘量測），11.6 基準 2.24–2.49 GiB → **落在區間內、無單調攀升** ✅
 - [x] Pod 收尾乾淨 ✅（Recreate 策略；舊 Pod `openclaw-gateway-66b77656b5-jvqst` 已消失，新 Pod RESTARTS 0）
