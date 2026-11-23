@@ -26,7 +26,7 @@
 | CJK 策略決議            | **維持保留自訂 CJK Han Bigram 伴隨索引**；乾跑實測 CJK commit **零衝突**、合併結果與上游 11.7 並存（§1.9）                                                             |
 | 記憶體索引重建          | **不需要**（schema / embedding 模型 / 輸入格式版本皆未變）（§1.10）                                                                                                    |
 | ⚠️ 唯一需要重寫的 patch | **Gemini 索引併發鎖**：上游 11.7 重構了 embedding 併發解析機制 → 我們舊的 hack 失效，改用上游原生 `inlineIndexConcurrency`（§1.11）                                    |
-| 目前狀態                | Phase 1 完成（Release Notes + `schemaVersions` + 隔離乾跑）。**等待 Phase 2 Go-Sign**（尚未建立分支、未推送、未觸發建置、未動線上）                                    |
+| 目前狀態                | ✅ **Phase 2 已完成**：分支已推、GHCR build 成功（5 個 image tag 皆存在）、K3s 已部署至 `2026.11.7`、**12 項實機驗證通過**（1 項待使用者實測）；Phase 3 收尾中         |
 
 ---
 
@@ -513,6 +513,18 @@ for t in 2026.11.7 v2026.11.7 2026.11.7-slim latest main; do
 done
 ```
 
+**✅ 執行結果（2026-11-23）**
+
+| 項目                | 結果                                                                                                                                   |
+| :------------------ | :------------------------------------------------------------------------------------------------------------------------------------- |
+| Build run           | `45113304873` → **success**，13m16s（04:40:55 → 04:54:11 UTC）                                                                         |
+| Jobs                | `prepare` ✅ / `build-and-push (linux/arm64)` ✅ / `build-and-push (linux/amd64)` ✅ / `merge` ✅（4/4 全綠）                          |
+| Run 身分            | `event=workflow_dispatch` ✅、`headBranch=my-config-v2026.11.7` ✅、`headSha=9885aedc9a4`（**我們的 commit**，非上游 `e31bbf056de`）✅ |
+| GitHub Actions 狀態 | **無 HTTP 422** → fork 的 Actions 未被停用 ✅                                                                                          |
+| Image tags          | `2026.11.7` / `v2026.11.7` / `2026.11.7-slim` / `latest` / `main` → **全部 OK** ✅                                                     |
+| Manifest            | OCI index `sha256:a792d754…`，同時含 `linux/amd64` 與 `linux/arm64` manifest + attestation ✅                                          |
+| 附註                | 僅一則上游 action 的 Node.js 20 deprecation 警告（`actions/checkout@v4` 等），不影響建置 ✅                                            |
+
 ### 2.9 K3s 部署與驗證
 
 ```bash
@@ -540,20 +552,23 @@ kubectl -n openclaw get deploy openclaw-gateway -o jsonpath='{.spec.template.spe
 
 **部署後實機驗證清單**（沿用 11.6 已驗證過的檢查項）
 
-- [ ] `openclaw --version` = `OpenClaw 2026.11.7`
-- [ ] `kubectl -n openclaw get pods` → 1/1 Running，**RESTARTS 0**，無 CrashLoopBackOff
-- [ ] Pod log 開機無 `FATAL` / `schema migration` 錯誤
-- [ ] **自訂工具鏈存在**：`/usr/local/bin/whisper`、`/usr/local/bin/edge-tts`、`/usr/bin/ffmpeg`、`/usr/bin/rsync`、`/usr/bin/tini`、`/usr/sbin/sshd`、`/app/docker/entrypoint-ssh.sh`、`en_US.utf8` / `zh_TW.utf8`、`faster-whisper 1.2.1`
-- [ ] Gateway logs：**20 plugins 正常載入**、**429 = 0 / `RESOURCE_EXHAUSTED` = 0**、無意外全量 reindex、無 `rss_threshold` 警告
-- [ ] **Memory 索引筆數對齊**：`memory_index_chunks` = `_fts` = `_cjk_fts`（與基準一致或增加），`session_transcript_fts` ≥ 2002
-- [ ] **2 字中文查詢實測**（經 **Gateway 路徑**，非 CLI）：`memory_index_chunks_cjk_fts MATCH '配置'` → 有命中且 bm25 分數有限；同一詞在主 trigram 索引回傳 0 筆（證明伴隨索引仍在排序層）
-- [ ] **Gemini 索引併發 = 1 已生效**：索引/召回期間無 429（`inlineIndexConcurrency: 1`）
-- [ ] Cron `Memory Dreaming Promotion` 維持 `inferenceBinding`、未中斷；比對升級前後 cron 清單無新增/重複/遺失
-- [ ] Telegram 實機往返（收發、回覆、審批 topic 隔離）
-- [ ] `openclaw doctor --non-interactive` → **Error 級 = 0**
-- [ ] 記憶體 cgroup：無單調攀升
-- [ ] Pod 收尾乾淨
-- [ ] **11.7 新增觀察**：Code Mode 是否出現 gRPC / BrokenPipe（#203869 觀察項）
+- [x] `openclaw --version` = `OpenClaw 2026.11.7` ✅（容器內 `node dist/index.js --version`）
+- [x] `kubectl -n openclaw get pods` → `openclaw-gateway-7ff7bcfdd4-dkscb` 1/1 Running，**RESTARTS 0**，無 CrashLoopBackOff ✅；映像 = `ghcr.io/kuniakil/openclaw:2026.11.7` ✅
+- [x] Pod log 開機無 `FATAL` / `schema migration` 錯誤 ✅（FATAL=0、schema migration=0 → schemaVersions 未變 → 啟動未觸發遷移）
+- [x] **自訂工具鏈存在**：`/usr/local/bin/whisper`、`/usr/local/bin/edge-tts`、`/usr/bin/ffmpeg`、`/usr/bin/rsync`、`/usr/bin/tini`、`/usr/sbin/sshd`（`which` 未列出係因容器 `PATH` 不含 `/usr/sbin`，檔案本身存在）、`/app/docker/entrypoint-ssh.sh`、`en_US.utf8` / `zh_TW.utf8`、`faster-whisper 1.2.1` ✅
+- [x] Gateway logs：**20 plugins 正常載入** ✅（anthropic, brave, canvas, cua-computer, device-pair, file-transfer, geolocation, github, google, linux-node, memory-core, microsoft, minimax, ollama, openai, perplexity, talk-voice, tavily, telegram, xai — **與 11.6 基準逐項相同**）；`loadFailedCount=0.0` / `registerFailedCount=0.0` ✅；**429 = 0 / `RESOURCE_EXHAUSTED` = 0** ✅；全量 reindex = 0 ✅；`rss_threshold` = 0 ✅
+- [x] **Memory 索引筆數對齊**：`memory_index_chunks` = `_fts` = `_cjk_fts` = **1657**（**與升級前完全相同**）✅；`session_transcript_fts` = **2050**（相同）✅
+- [x] **2 字中文查詢實測**（經 **Gateway 路徑**，非 CLI）✅
+  - 決定性底層證據：`memory_index_chunks_cjk_fts MATCH '配置'` → **39 筆**且 bm25 分數有限（−3.447 / −3.433 / −5.965 / −4.958 / −5.706）；同一詞在**主 trigram 索引回傳 0 筆**；「設定」→ cjk_fts **131 筆** / 主索引 **0 筆** → 證明伴隨索引正是讓 2 字查詢可排序的那一層 ✅
+  - 端到端（`openclaw agent --session-key agent:main:verify-cjk-1177`，**不帶任何 `--model` 覆寫**）：`memory_search` 查「設定」→ 3 筆命中，`textScore` **0.7958 / 0.7645 / 0.7600**（`MEMORY.md` L90、`memory/dreaming/light/2026-11-23.md` L59–L78、`memory/dreaming/light/2026-11-21.md` L1–L24），**無 warning、無 withheld hits** ✅
+- [x] **Gemini 索引併發 = 1 已生效**：整段部署 + 驗證期間 **429 = 0**、無 `RESOURCE_EXHAUSTED` ✅（`inlineIndexConcurrency: 1` 已由 adapter 宣告）
+- [x] Cron `Memory Dreaming Promotion` 維持 `inferenceBinding`、未中斷 ✅（job_id `c870fbf5-…`、enabled=1、payload=agentTurn，**與升級前逐欄相同**，無新增/重複/遺失）
+- [ ] Telegram 實機往返（收發、回覆、審批 topic 隔離）← **Gateway 側已驗證**：telegram provider 啟動、isolated polling ingress 啟動、收到 2 個 update（596795967 / 596795968）、`messageId=2832` 的 slash command 於 `native_slash_command_fast_path` 完成（19.9s）且**無任何 `[error]`**；**仍需使用者確認自己收到回覆**
+- [x] `openclaw doctor --non-interactive` → **exit 0，Error 級 = 0** ✅（唯一「Fix now」為既有的 `MiniMax-M3.1-Flash-Preview` 不在 provider catalog 提示，與 11.6 相同、非阻斷；另有預期的容器內無 systemd busctl 提示與兩則上游 SDK deprecation warning）
+- [x] 記憶體 cgroup：啟動後 **0.81 GiB → 2.35 GiB**（部署後 4 分鐘量測），11.6 基準 2.24–2.49 GiB → **落在區間內、無單調攀升** ✅
+- [x] Pod 收尾乾淨 ✅（Recreate 策略；舊 Pod `openclaw-gateway-66b77656b5-jvqst` 已消失，新 Pod RESTARTS 0）
+- [x] **11.7 新增觀察**：Code Mode **無** gRPC / BrokenPipe ✅（`BrokenPipe|gRPC code-mode session closed` = 0；#203869 觀察項未觸發）
+- [x] **延續性已知問題（非本次回歸）**：`[usage-cost-cache] background refresh failed` — `camofox-verify-20261024…zst` 超過 1 MiB 解壓預算（#202213，11.7 仍未修，11.6/11.7 程式碼逐字相同）→ **非致命、無資料損毀**（訊息明寫 "the archive is unchanged"）✅
 
 **驗證指令（可直接貼上執行）**
 
