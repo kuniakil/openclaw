@@ -563,7 +563,10 @@ kubectl -n openclaw get deploy openclaw-gateway -o jsonpath='{.spec.template.spe
   - 端到端（`openclaw agent --session-key agent:main:verify-cjk-1177`，**不帶任何 `--model` 覆寫**）：`memory_search` 查「設定」→ 3 筆命中，`textScore` **0.7958 / 0.7645 / 0.7600**（`MEMORY.md` L90、`memory/dreaming/light/2026-11-23.md` L59–L78、`memory/dreaming/light/2026-11-21.md` L1–L24），**無 warning、無 withheld hits** ✅
 - [x] **Gemini 索引併發 = 1 已生效**：整段部署 + 驗證期間 **429 = 0**、無 `RESOURCE_EXHAUSTED` ✅（`inlineIndexConcurrency: 1` 已由 adapter 宣告）
 - [x] Cron `Memory Dreaming Promotion` 維持 `inferenceBinding`、未中斷 ✅（job_id `c870fbf5-…`、enabled=1、payload=agentTurn，**與升級前逐欄相同**，無新增/重複/遺失）
-- [ ] Telegram 實機往返（收發、回覆、審批 topic 隔離）← **Gateway 側已驗證**：telegram provider 啟動、isolated polling ingress 啟動、收到 2 個 update（596795967 / 596795968）、`messageId=2832` 的 slash command 於 `native_slash_command_fast_path` 完成（19.9s）且**無任何 `[error]`**；**仍需使用者確認自己收到回覆**
+- [x] Telegram 實機往返（收發、回覆、審批 topic 隔離）✅ — **Gateway 側**：telegram provider 啟動、isolated polling ingress 啟動、收到 2 個 update（596795967 / 596795968）、`messageId=2832` 於 `native_slash_command_fast_path` 完成（19.9s）且無任何 `[error]`；**Agent 側**：使用者於 13:00 發出的升級後檢查要求已完成，產出 16 節自檢報告（版本三合一、Pod 0 重啟、rollout 完整、health 200、doctor error 級僅容器 artifact 1 筆、檔案 md5 逐筆相符、**兩層 Gemini 限速都在**、CJK 三表對齊、索引未重建、20 plugins、error/fatal/429 = 0）→ 結論**通過、無阻斷項目** ✅
+  - ⚠️ 同期觀察：Code Mode guest 階段 `ReferenceError` ×3（1 次驗證 session、2 次 Telegram session）→ `src/agents/code-mode-source.ts` 11.6→11.7 逐字未變，屬**模型產碼引用未定義變數**的既定重試行為，**非 11.7 回歸**；回合最終正常結束
+  - ⚠️ 同期觀察：`[skills/workshop] … The latest messages exceed this session's context limit` → 該 Telegram session transcript 已 1524 筆，與 11.6 記錄的 context 壓力屬同類問題（非 11.7 造成），建議定期 compact 或另開新 session
+  - 📌 Agent 另回報兩個**我們自訂 skill 的過時假設**（待使用者核准後修補）：`cluster-and-runtime.md` 仍預期 Gemini guard 在 `manager-embedding-ops.ts`（會誤報回歸）、`state-and-diagnostics.md` 以 `logLevelId` 50/60 判定 error（現行 scale 為 1–5，會漏掉全部 error）
 - [x] `openclaw doctor --non-interactive` → **exit 0，Error 級 = 0** ✅（唯一「Fix now」為既有的 `MiniMax-M3.1-Flash-Preview` 不在 provider catalog 提示，與 11.6 相同、非阻斷；另有預期的容器內無 systemd busctl 提示與兩則上游 SDK deprecation warning）
 - [x] 記憶體 cgroup：啟動後 **0.81 GiB → 2.35 GiB**（部署後 4 分鐘量測），11.6 基準 2.24–2.49 GiB → **落在區間內、無單調攀升** ✅
 - [x] Pod 收尾乾淨 ✅（Recreate 策略；舊 Pod `openclaw-gateway-66b77656b5-jvqst` 已消失，新 Pod RESTARTS 0）
@@ -620,7 +623,7 @@ kubectl -n openclaw get deploy openclaw-gateway -o jsonpath='{.spec.template.spe
 - [x] 建立本版快照分支：`backup/my-config-v2026.11.7` → `origin/my-config-v2026.11.7` ✅（`c189376e001`）
 - [x] 產出 post-mortem 至 `~/kubernetes/docs/openclaw-v2026-11-7-upgrade-20261123.md` ✅（commit `ad82b15`，已推 `my-k8s` origin；對齊 11.6 post-mortem 格式：§1 任務背景與目標 / §2 前置分析與關鍵決策 / §3 建置、遷移與部署步驟 / §4 實機驗證結果與待補項目）
 - [x] 更新 `~/kubernetes/docs/service-version-matrix.md`（openclaw 列 → `2026.11.7`、最後更新日期 → 2026-11-23）✅（commit `caa1e39`，已推）
-- [ ] 備份清理（**需使用者明確核准後才執行**；本次保留 `20261123-pre-v2026.11.7` 2.5G 與 Mac 異地三份，舊備份待觀察期後再問）
+- [x] 備份清理（**使用者 2026-11-23 明確核准後執行**）✅：已刪除 `/root/backup-openclaw-20261120-pre-v2026.11.6`（2.7G）與 `/root/backup-openclaw-20261121-precompaction`（238M）；保留 `/root/backup-openclaw-20261123-pre-v2026.11.7`（2.5G）與 Mac 異地三份（agent 187M / state 3.9M / openclaw.json）；N100 磁碟 1.1T 可用（39% used）
 - [x] 保留 `my-config-v2026.11.6` 分支與 `origin` 對應分支（回滾用）✅（`origin/my-config-v2026.11.6` = `116497f95a4`）
 - [x] 記錄待辦：#202213 壓縮封存讀取仍待上游 #192743 / #193548 進 stable（§1.8，本次實測仍觸發同一個封存、非回歸）；#203869 Code Mode gRPC 觀察項（本次未觸發）✅
 
