@@ -33,6 +33,9 @@ export const geminiMemoryEmbeddingProviderAdapter: MemoryEmbeddingProviderAdapte
       provider,
       runtime: {
         id: "gemini",
+        // Custom: Gemini's free tier allows only 15 embedding requests/minute, so index
+        // serially instead of the host default of 4 concurrent jobs.
+        inlineIndexConcurrency: 1,
         cacheKeyData: {
           provider: "gemini",
           baseUrl: client.baseUrl,
