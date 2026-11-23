@@ -38,7 +38,7 @@
 - [x] 不在 Mac 本機跑重型 CI（`tsgo`/`vitest`）或本機 `docker build`（全交 GitHub Actions）
 - [x] 升級期間不另起 `openclaw memory index/search/reset`、`agent --local`（避免雙行程撞 Gemini 配額）
 - [x] 10+ 分鐘長等待（`gh run watch`、`kubectl rollout status`）一律派給背景子代理
-- [ ] **使用者明確核准執行 Phase 2（Go-Sign）**
+- [x] **使用者明確核准執行 Phase 2（Go-Sign）** — 2026-11-23「go, 部署, 驗證」
 
 ---
 
@@ -616,13 +616,13 @@ kubectl -n openclaw get deploy openclaw-gateway -o jsonpath='{.spec.template.spe
 
 ## Phase 3: 收尾與清理
 
-- [ ] 更新本工作表完成狀態並 commit / push
-- [ ] 建立本版快照分支：`backup/my-config-v2026.11.7` → `origin/my-config-v2026.11.7`
-- [ ] 產出 post-mortem 至 `~/kubernetes/docs/openclaw-v2026-11-7-upgrade-20261123.md`（對齊 `openclaw-v2026-11-6-upgrade-20261120.md` 格式）
-- [ ] 更新 `~/kubernetes/docs/service-version-matrix.md`（openclaw 列 → `2026.11.7`）
-- [ ] 備份清理（需使用者明確核准後執行；保留本次升級前備份 + 觀察期）
-- [ ] 保留 `my-config-v2026.11.6` 分支與 `origin` 對應分支（回滾用）
-- [ ] 記錄待辦：#202213 壓縮封存讀取仍待上游 #192743 / #193548 進 stable（§1.8）；#203869 Code Mode gRPC 觀察項
+- [x] 更新本工作表完成狀態並 commit / push ✅（commit `c189376e001` → `origin/my-config-v2026.11.7`）
+- [x] 建立本版快照分支：`backup/my-config-v2026.11.7` → `origin/my-config-v2026.11.7` ✅（`c189376e001`）
+- [x] 產出 post-mortem 至 `~/kubernetes/docs/openclaw-v2026-11-7-upgrade-20261123.md` ✅（commit `ad82b15`，已推 `my-k8s` origin；對齊 11.6 post-mortem 格式：§1 任務背景與目標 / §2 前置分析與關鍵決策 / §3 建置、遷移與部署步驟 / §4 實機驗證結果與待補項目）
+- [x] 更新 `~/kubernetes/docs/service-version-matrix.md`（openclaw 列 → `2026.11.7`、最後更新日期 → 2026-11-23）✅（commit `caa1e39`，已推）
+- [ ] 備份清理（**需使用者明確核准後才執行**；本次保留 `20261123-pre-v2026.11.7` 2.5G 與 Mac 異地三份，舊備份待觀察期後再問）
+- [x] 保留 `my-config-v2026.11.6` 分支與 `origin` 對應分支（回滾用）✅（`origin/my-config-v2026.11.6` = `116497f95a4`）
+- [x] 記錄待辦：#202213 壓縮封存讀取仍待上游 #192743 / #193548 進 stable（§1.8，本次實測仍觸發同一個封存、非回歸）；#203869 Code Mode gRPC 觀察項（本次未觸發）✅
 
 ---
 
@@ -671,6 +671,6 @@ kubectl -n openclaw get deploy openclaw-gateway -o jsonpath='{.spec.template.spe
 ## 簽核
 
 - [x] Phase 1 分析完成（含隔離 worktree 乾跑），無未解衝突
-- [ ] 使用者 Go-Sign（執行 Phase 2）
-- [ ] Phase 2 完成（build + deploy + 驗證）
-- [ ] Phase 3 收尾完成
+- [x] 使用者 Go-Sign（執行 Phase 2，含部署 + 驗證）— 2026-11-23 已核准「go, 部署, 驗證」
+- [x] Phase 2 完成（build + deploy + 驗證）— 2026-11-23（build run `45113304873` success；部署至 `2026.11.7`；12 項實機驗證通過，1 項待使用者 Telegram 實測）
+- [x] Phase 3 收尾完成 — 2026-11-23（工作表 / 快照分支 / post-mortem / 版本矩陣皆已完成；備份清理待使用者核准）
