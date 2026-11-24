@@ -220,7 +220,7 @@ src/infra/database-engine/sqlite-search-schema.ts  cjk 命中 6 處  ✅
 
 - [ ] 升級完成、驗證通過後，另開一次 `openclaw doctor` 遷移工作（**需使用者授權**：涉及 config 變更）
 - [ ] 遷移時**必須保留**：`memory.search.store.fts.cjk = "bigram"`（我們的自訂 CJK 鍵）與 `agents.defaults.model` / `agents.entries.main.model` 的一致性
-- [ ] **不要**在本次升級中執行 `doctor --fix`（schema 未變 → 不需要；且 11.8 新增「Require repair consent before unattended plugin downloads」，避免順手改動 plugin）
+- [x] **不要**在本次升級中執行 `doctor --fix`（schema 未變 → 不需要；且 11.8 新增「Require repair consent before unattended plugin downloads」，避免順手改動 plugin）
 
 ### 1.8 上游已知問題（針對 11.7 → 11.8）
 
@@ -338,12 +338,12 @@ ssh root@192.168.31.72 "df -h / | tail -1"
 
 **✅ 執行結果（2026-11-24）**
 
-| 項目         | 結果                                                                                                      |
-| :----------- | :-------------------------------------------------------------------------------------------------------- |
-| N100 熱備份  | `/root/backup-openclaw-20261124-pre-v2026.11.8` = **2.5G** ✅                                             |
-| N100 磁碟    | 總 1.8T / 已用 669G / 可用 **1.1T**（39% used）✅                                                         |
-| 既有備份     | `/root/backup-openclaw-20261123-pre-v2026.11.7`（2.5G）**保留未動**，待 11.8 驗證通過後再問使用者是否清理 |
-| Mac 異地備份 | ⏳ 待補（§Phase 3 前執行）                                                                                |
+| 項目         | 結果                                                                                                                                                                                                  |
+| :----------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| N100 熱備份  | `/root/backup-openclaw-20261124-pre-v2026.11.8` = **2.5G** ✅                                                                                                                                         |
+| N100 磁碟    | 總 1.8T / 已用 669G / 可用 **1.1T**（39% used）✅                                                                                                                                                     |
+| 既有備份     | `/root/backup-openclaw-20261123-pre-v2026.11.7`（2.5G）**保留未動**，待 11.8 驗證通過後再問使用者是否清理                                                                                             |
+| Mac 異地備份 | `openclaw-agent-pre-v2026.11.8-20261124.gz` = **190.7M**、`openclaw-state-pre-v2026.11.8-20261124.gz` = **3.97M**（`gzip -t` 雙雙通過）、`openclaw.json-pre-v2026.11.8-20261124`（JSON 驗證 VALID）✅ |
 
 ### 2.2 建立新分支（從官方 baseline 開，不要從本地 `v*` tag）
 
@@ -488,6 +488,16 @@ for t in 2026.11.8 v2026.11.8 2026.11.8-slim latest main; do
 done
 ```
 
+**✅ 執行結果（2026-11-24）**
+
+| 項目                | 結果                                                                                                                                   |
+| :------------------ | :------------------------------------------------------------------------------------------------------------------------------------- |
+| Build run           | `45424506041` → **success**，13m41s（15:21:10 → 15:34:51 UTC）                                                                         |
+| Jobs                | `prepare` ✅ / `build-and-push (linux/amd64)` ✅ / `build-and-push (linux/arm64)` ✅ / `merge` ✅（4/4 全綠）                          |
+| Run 身分            | `event=workflow_dispatch` ✅、`headBranch=my-config-v2026.11.8` ✅、`headSha=9701b1d0ef4`（**我們的 commit**，非上游 `2d4ab292114`）✅ |
+| GitHub Actions 狀態 | **無 HTTP 422** → fork 的 Actions 未被停用 ✅                                                                                          |
+| Image tags          | `2026.11.8` / `v2026.11.8` / `2026.11.8-slim` / `v2026.11.8-slim` / `latest` / `slim` / `main` / `main-slim` → **8/8 全部 OK** ✅      |
+
 ### 2.9 K3s 部署與驗證
 
 ```bash
@@ -501,22 +511,46 @@ kubectl -n openclaw get deploy openclaw-gateway -o jsonpath='{.spec.template.spe
 
 > ✅ **本次不需要 scale-0 / 維護 Pod / `doctor --fix`**（`schemaVersions` 不變 → 啟動不觸發 schema 遷移）。
 
+**✅ 執行結果（2026-11-24）**
+
+| 項目                 | 結果                                                                                                                                                                                                                                                                                                             |
+| :------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Kustomize tag        | `newTag: "2026.11.8"`；`~/kubernetes` commit `5601d7c` `chore(openclaw): bump image to 2026.11.8` → 已推 `my-k8s` origin ✅                                                                                                                                                                                      |
+| `kubectl apply -k`   | `deployment.apps/openclaw-gateway configured`（其餘 unchanged）✅                                                                                                                                                                                                                                                |
+| Rollout              | `deployment "openclaw-gateway" successfully rolled out` ✅                                                                                                                                                                                                                                                       |
+| Pod                  | `openclaw-gateway-6df7bb7d87-dnvjh`，1/1 Running，**RESTARTS 0**，映像 = `ghcr.io/kuniakil/openclaw:2026.11.8` ✅                                                                                                                                                                                                |
+| 版本                 | `OpenClaw 2026.11.8` ✅                                                                                                                                                                                                                                                                                          |
+| `/healthz`           | 容器內 `{"ok":true,"status":"live"}` = 200 ✅；公開 ingress `https://openclaw.3pm.lol/healthz` = **200** ✅                                                                                                                                                                                                      |
+| 開機 log             | FATAL = **0**、`schema migration` = **0**、`"logLevelName":"(ERROR\|FATAL)"` = **0**、reindex = **0**、`rss_threshold` = **0**、gRPC/BrokenPipe = **0** ✅                                                                                                                                                       |
+| Plugins              | **20 plugins**（anthropic, brave, canvas, cua-computer, device-pair, file-transfer, geolocation, github, google, linux-node, memory-core, microsoft, minimax, ollama, openai, perplexity, talk-voice, tavily, telegram, xai）— **與 11.7 基準逐項相同** ✅；`loadFailedCount=0.0` / `registerFailedCount=0.0` ✅ |
+| Telegram             | plugin 載入 ✅；`isolated polling ingress started account=default` ✅                                                                                                                                                                                                                                            |
+| 自訂工具鏈           | `/usr/local/bin/whisper`、`/usr/local/bin/edge-tts`、`/usr/bin/ffmpeg`、`/usr/bin/rsync`、`/usr/bin/tini`、`/usr/sbin/sshd`、`/app/docker/entrypoint-ssh.sh`、`en_US.utf8` / `zh_TW.utf8`、`faster-whisper 1.2.1` ✅                                                                                             |
+| Doctor               | `doctor --non-interactive` → **exit 0** ✅；Error 級 = 0（唯一 error 字串為容器內無 systemd 的 `busctl` 連線失敗，與 11.7 相同）；唯一「Fix now」為既有的 `MiniMax-M3.1-Flash-Preview` 不在 provider catalog 提示（**非阻斷**，與 11.7 相同）✅                                                                  |
+| Memory 索引筆數      | `memory_index_chunks` = `_fts` = `_cjk_fts` = **1692**（**與升級前完全相同**）；`session_transcript_fts` = **2085**（相同）✅                                                                                                                                                                                    |
+| **2 字中文底層驗證** | `memory_index_chunks_cjk_fts MATCH '設定'` → **137 筆**；同一詞在主 trigram 索引 `memory_index_chunks_fts MATCH '設定'` → **0 筆** → **CJK 伴隨索引確實生效** ✅                                                                                                                                                 |
+| Cron                 | `Memory Dreaming Promotion`（job_id `c870fbf5-4d9b-4773-8e51-eef8c62beaad`、enabled=1、payload=agentTurn）**與升級前逐欄相同**，無新增/重複/遺失 ✅                                                                                                                                                              |
+| cgroup 記憶體        | 啟動 0.68 GiB → 1.83 GiB → **2.43 GiB**（部署後約 4 分鐘）→ 落在 11.7 基準區間（2.24–2.49 GiB），**無單調攀升** ✅                                                                                                                                                                                               |
+| `[memory]` 事件      | 升級期間 **0** → 未觸發任何 embedding，Gemini 配額完全未被消耗 ✅                                                                                                                                                                                                                                                |
+| 2 字中文端到端       | 經 Gateway 路徑 `openclaw agent --session-key agent:main:verify-cjk-1188`（**不帶 `--model` 覆寫**）→ 命中 **6 筆**，`textScore` = **0.7957 / 0.7941 / 0.7626 / 0.7116**（另 2 筆為 0，係向量相似度進榜）、無 `disabled` / `stale` / corpus 警告 ✅                                                              |
+
+> **真 429 / 配額**：嚴格樣式（`RESOURCE_EXHAUSTED`、`429 Too Many`、`quota exceeded`、`rate limit`）比對 = **0** ✅（先前寬鬆 grep 到的 3 筆是 `total=4293.4ms` 啟動計時數字，非速率限制）
+
 **部署後實機驗證清單**（沿用 11.6 / 11.7 已驗證過的檢查項）
 
-- [ ] `openclaw --version` = `OpenClaw 2026.11.8`（容器內 `node dist/index.js --version`）
-- [ ] `kubectl -n openclaw get pods` → 1/1 Running，**RESTARTS 0**，無 CrashLoopBackOff；映像 = `ghcr.io/kuniakil/openclaw:2026.11.8`
-- [ ] Pod log 開機無 `FATAL` / `schema migration` 錯誤（FATAL=0、schema migration=0）
-- [ ] **自訂工具鏈存在**：`/usr/local/bin/whisper`、`/usr/local/bin/edge-tts`、`/usr/bin/ffmpeg`、`/usr/bin/rsync`、`/usr/bin/tini`、`/usr/sbin/sshd`、`/app/docker/entrypoint-ssh.sh`、`en_US.utf8` / `zh_TW.utf8`、`faster-whisper 1.2.1`
-- [ ] Gateway logs：**20 plugins 正常載入**（anthropic, brave, canvas, cua-computer, device-pair, file-transfer, geolocation, github, google, linux-node, memory-core, microsoft, minimax, ollama, openai, perplexity, talk-voice, tavily, telegram, xai — **與 11.7 基準逐項相同**）；`loadFailedCount=0.0` / `registerFailedCount=0.0`；**429 = 0 / `RESOURCE_EXHAUSTED` = 0**；全量 reindex = 0
-- [ ] **Memory 索引筆數對齊**：`memory_index_chunks` = `_fts` = `_cjk_fts` = **1692**（與升級前相同）；`session_transcript_fts` = **2085**（相同）
-- [ ] **2 字中文查詢實測**（經 **Gateway 路徑**，非 CLI）：`memory_index_chunks_cjk_fts MATCH '設定'` 有筆且 bm25 分數有限、同一詞在主 trigram 索引回傳 0 筆 → 證明 CJK 伴隨索引仍生效
-- [ ] **Gemini 索引併發 = 1 已生效**：整段期間 429 = 0、無 `RESOURCE_EXHAUSTED`
-- [ ] Cron `Memory Dreaming Promotion` 維持 `inferenceBinding`、未中斷（job_id `c870fbf5-…`、enabled=1、payload=agentTurn，與升級前逐欄相同）
-- [ ] Telegram 實機往返（收發、回覆）✅
-- [ ] `openclaw doctor --non-interactive` → exit 0，Error 級 = 0
-- [ ] cgroup 記憶體落在 11.7 基準區間（2.24–2.49 GiB），無單調攀升
-- [ ] **11.8 觀察項**：Code Mode 無 gRPC / BrokenPipe（#203869 未觸發）
-- [ ] **延續性已知問題（非本次回歸）**：`[usage-cost-cache] background refresh failed`（#202213，11.8 仍未修）→ 非致命、無資料損毀
+- [x] `openclaw --version` = `OpenClaw 2026.11.8`（容器內 `node dist/index.js --version`）
+- [x] `kubectl -n openclaw get pods` → 1/1 Running，**RESTARTS 0**，無 CrashLoopBackOff；映像 = `ghcr.io/kuniakil/openclaw:2026.11.8`
+- [x] Pod log 開機無 `FATAL` / `schema migration` 錯誤（FATAL=0、schema migration=0）
+- [x] **自訂工具鏈存在**：`/usr/local/bin/whisper`、`/usr/local/bin/edge-tts`、`/usr/bin/ffmpeg`、`/usr/bin/rsync`、`/usr/bin/tini`、`/usr/sbin/sshd`、`/app/docker/entrypoint-ssh.sh`、`en_US.utf8` / `zh_TW.utf8`、`faster-whisper 1.2.1`
+- [x] Gateway logs：**20 plugins 正常載入**（anthropic, brave, canvas, cua-computer, device-pair, file-transfer, geolocation, github, google, linux-node, memory-core, microsoft, minimax, ollama, openai, perplexity, talk-voice, tavily, telegram, xai — **與 11.7 基準逐項相同**）；`loadFailedCount=0.0` / `registerFailedCount=0.0`；**429 = 0 / `RESOURCE_EXHAUSTED` = 0**；全量 reindex = 0
+- [x] **Memory 索引筆數對齊**：`memory_index_chunks` = `_fts` = `_cjk_fts` = **1692**（與升級前相同）；`session_transcript_fts` = **2085**（相同）
+- [x] **2 字中文查詢實測**（經 **Gateway 路徑**，非 CLI）：`memory_index_chunks_cjk_fts MATCH '設定'` 有筆且 bm25 分數有限、同一詞在主 trigram 索引回傳 0 筆 → 證明 CJK 伴隨索引仍生效
+- [x] **Gemini 索引併發 = 1 已生效**：整段期間 429 = 0、無 `RESOURCE_EXHAUSTED`
+- [x] Cron `Memory Dreaming Promotion` 維持 `inferenceBinding`、未中斷（job_id `c870fbf5-…`、enabled=1、payload=agentTurn，與升級前逐欄相同）
+- [ ] **Telegram 實機往返**：**Gateway 側已驗證**（plugin 載入 ✅、`isolated polling ingress started account=default` ✅、零 delivery error ✅）；**使用者收發往返待補**（需使用者在 Telegram 實際發訊回覆）
+- [x] `openclaw doctor --non-interactive` → exit 0，Error 級 = 0
+- [x] cgroup 記憶體落在 11.7 基準區間（2.24–2.49 GiB），無單調攀升
+- [x] **11.8 觀察項**：Code Mode 無 gRPC / BrokenPipe（#203869 未觸發）
+- [x] **延續性已知問題（非本次回歸）**：`[usage-cost-cache] background refresh failed`（#202213，11.8 仍未修）→ 非致命、無資料損毀
 
 **驗證指令（可直接貼上執行）**
 
@@ -569,13 +603,13 @@ ssh root@192.168.31.72 "sqlite3 -readonly /data/services/openclaw/.openclaw/agen
 
 ## Phase 3: 收尾與清理
 
-- [ ] 更新本工作表完成狀態並 commit / push
-- [ ] 建立本版快照分支：`backup/my-config-v2026.11.8` → `origin/my-config-v2026.11.8`
-- [ ] 產出 post-mortem 至 `~/kubernetes/docs/openclaw-v2026-11-8-upgrade-20261124.md`
-- [ ] 更新 `~/kubernetes/docs/service-version-matrix.md`（openclaw 列 → `2026.11.8`）
-- [ ] 備份清理（**需使用者明確核准後執行**）
-- [ ] 保留 `my-config-v2026.11.7` 分支與 `origin` 對應分支（回滾用）
-- [ ] 記錄待辦：§1.7 的 **2026-11-29 到期遷移**（41 項 compatibility record）；#202213 壓縮封存讀取仍待上游修復；#203869 Code Mode gRPC 觀察項
+- [x] 更新本工作表完成狀態並 commit / push ✅
+- [x] 建立本版快照分支：`backup/my-config-v2026.11.8` → `origin/my-config-v2026.11.8` ✅
+- [x] 產出 post-mortem 至 `~/kubernetes/docs/openclaw-v2026-11-8-upgrade-20261124.md` ✅（`my-k8s` commit `3a88f40`，已推 origin）
+- [x] 更新 `~/kubernetes/docs/service-version-matrix.md`（openclaw 列 → `2026.11.8`、最後更新日期 → 2026-11-24）✅（同一 commit `3a88f40`）
+- [ ] 備份清理（**需使用者明確核准後執行**）— 待辦：N100 `backup-openclaw-20261123-pre-v2026.11.7`（2.5G）與 Mac 11.7 的兩份備份
+- [x] 保留 `my-config-v2026.11.7` 分支與 `origin` 對應分支（回滾用）✅
+- [x] 記錄待辦：§1.7 的 **2026-11-29 到期遷移**（41 項 compatibility record）；#202213 壓縮封存讀取仍待上游修復；#203869 Code Mode gRPC 觀察項 ✅（已寫入 post-mortem §5）
 
 ---
 
@@ -626,6 +660,6 @@ ssh root@192.168.31.72 "sqlite3 -readonly /data/services/openclaw/.openclaw/agen
 ## 簽核
 
 - [x] Phase 1 分析完成（含隔離 worktree 乾跑），**零未解衝突**
-- [ ] 使用者 Go-Sign（執行 Phase 2，含部署 + 驗證）
-- [ ] Phase 2 完成（build + deploy + 驗證）
-- [ ] Phase 3 收尾完成
+- [x] 使用者 Go-Sign（執行 Phase 2，含部署 + 驗證）— 2026-11-24 核准「Go：執行升級」
+- [x] Phase 2 完成（build + deploy + 驗證）— 2026-11-24（build run `45424506041` success 4/4；部署至 `2026.11.8`；**13/14 項實機驗證通過**，1 項待使用者 Telegram 實測）
+- [x] Phase 3 收尾完成 — 2026-11-24（工作表 / 快照分支 / post-mortem / 版本矩陣皆完成；備份清理待使用者核准）
