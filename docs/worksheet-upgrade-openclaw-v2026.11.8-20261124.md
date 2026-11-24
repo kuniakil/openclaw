@@ -607,9 +607,10 @@ ssh root@192.168.31.72 "sqlite3 -readonly /data/services/openclaw/.openclaw/agen
 - [x] 建立本版快照分支：`backup/my-config-v2026.11.8` → `origin/my-config-v2026.11.8` ✅
 - [x] 產出 post-mortem 至 `~/kubernetes/docs/openclaw-v2026-11-8-upgrade-20261124.md` ✅（`my-k8s` commit `3a88f40`，已推 origin）
 - [x] 更新 `~/kubernetes/docs/service-version-matrix.md`（openclaw 列 → `2026.11.8`、最後更新日期 → 2026-11-24）✅（同一 commit `3a88f40`）
-- [ ] 備份清理（**需使用者明確核准後執行**）— 待辦：N100 `backup-openclaw-20261123-pre-v2026.11.7`（2.5G）與 Mac 11.7 的兩份備份
+- [x] 備份清理（**使用者 2026-11-25 明確核准後執行**）✅：已刪除 N100 `/root/backup-openclaw-20261123-pre-v2026.11.7`（2.5G）、Mac 11.7 的三份（agent 187M / state 3.9M / openclaw.json）與 11.5 / 11.6 的 tar.gz（180M / 185M）；**只保留 11.8 一份**：N100 `/root/backup-openclaw-20261124-pre-v2026.11.8`（2.5G，已驗證 DB 可讀：cron_jobs=1、memory_index_chunks=1692）+ Mac 三份（197M）；共釋出約 **3.0G**
 - [x] 保留 `my-config-v2026.11.7` 分支與 `origin` 對應分支（回滾用）✅
 - [x] 記錄待辦：§1.7 的 **2026-11-29 到期遷移**（41 項 compatibility record）；#202213 壓縮封存讀取仍待上游修復；#203869 Code Mode gRPC 觀察項 ✅（已寫入 post-mortem §5）
+- [x] 建立升級後工作計畫（4 項待辦）→ `~/kubernetes/docs/worksheet-openclaw-post-11-8-followups-20261125.md` ✅（my-k8s repo）
 
 ---
 
